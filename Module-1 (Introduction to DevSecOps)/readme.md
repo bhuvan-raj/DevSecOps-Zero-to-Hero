@@ -217,7 +217,8 @@ Ensures systems and data are **available when needed**.
 ### **5.2 DOD Triad (AAA Model)**
 
 The **DOD Triad**, also known as the **AAA Model**, focuses on identity and access management.
-
+<img src="https://github.com/bhuvan-raj/DevSecOps-Zero-to-Hero/blob/main/assets/aaa.webp"
+     alt="Banner"/>
 ---
 
 #### **1) Authentication**
