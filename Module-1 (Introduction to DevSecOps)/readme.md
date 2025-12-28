@@ -163,6 +163,9 @@ The **Shift-Left approach** means moving security **earlier (to the left)** in t
 
 ### **5.1 CIA Triad**
 
+<img src="https://github.com/bhuvan-raj/DevSecOps-Zero-to-Hero/blob/main/assets/cia.png"
+     alt="Banner"/>
+
 The **CIA Triad** represents the foundational principles of information security.
 
 ---
