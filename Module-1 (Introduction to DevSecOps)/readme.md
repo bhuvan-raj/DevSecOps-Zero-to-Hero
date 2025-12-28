@@ -1,4 +1,5 @@
 # **Module 1: Introduction to DevSecOps (Foundations)**
+<img src="https://github.com/bhuvan-raj/DevSecOps-Zero-to-Hero/blob/main/assets/devsecops.png" alt="Banner" />
 
 ---
 
