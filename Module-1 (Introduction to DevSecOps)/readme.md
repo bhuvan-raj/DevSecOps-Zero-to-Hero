@@ -2,7 +2,7 @@
 <img src="https://github.com/bhuvan-raj/DevSecOps-Zero-to-Hero/blob/main/assets/devsecops.png"
      alt="Banner"
      width="800"
-     height="300" />
+     height="400" />
 
 ---
 
