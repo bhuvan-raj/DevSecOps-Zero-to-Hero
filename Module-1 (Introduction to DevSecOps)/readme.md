@@ -119,6 +119,8 @@ Automated security checks:
 ---
 
 ## Shift-Left Approach in Software Development**
+<img src="https://github.com/bhuvan-raj/DevSecOps-Zero-to-Hero/blob/main/assets/sl.png"
+     alt="Banner"/>
 
 ### **What is Shift-Left?**
 
