@@ -1,5 +1,8 @@
 # 🚀 DevSecOps Zero to Hero
 
+<img src="https://github.com/bhuvan-raj/DevSecOps-Zero-to-Hero/blob/main/assets/123.jpeg"
+     alt="Banner"/>
+
 A complete, step-by-step learning repository designed to take you from DevSecOps fundamentals to advanced real-world practices, focusing on secure CI/CD pipelines, cloud security, automation, and compliance.
 
 ## 📌 About This Repository
