@@ -1,28 +1,62 @@
+<div align="center">
 
-# DevSecOps Zero to Hero 
-<img src="https://github.com/bhuvan-raj/DevSecOps-Zero-to-Hero/blob/main/assets/9029A461-4CEC-4A8F-9F62-5A8BBA0F64C1.png"
-     alt="Banner"/>
+<img src="assets/9029A461-4CEC-4A8F-9F62-5A8BBA0F64C1.png" alt="DevSecOps Zero to Hero Banner" width="100%"/>
+
+# 🛡️ DevSecOps Zero to Hero
+
+**Learn. Secure. Automate. Deploy.**
 
 A structured, hands-on learning repository for mastering DevSecOps by integrating security into the software development lifecycle, CI/CD pipelines, containers, Kubernetes, and infrastructure as code.
 
-This repository is designed for learners who have already completed DevOps fundamentals, including Linux, Git, GitHub, Docker, Kubernetes, Terraform, Jenkins, GitHub Actions, Prometheus, and Grafana.
+<br/>
+
+![Modules](https://img.shields.io/badge/Modules-12-0ea5e9?style=for-the-badge)
+![Level](https://img.shields.io/badge/Level-Intermediate%20to%20Advanced-8b5cf6?style=for-the-badge)
+![Approach](https://img.shields.io/badge/Approach-Hands--on%20Labs-22c55e?style=for-the-badge)
+![Capstone](https://img.shields.io/badge/Capstone-End--to--End%20Pipeline-f59e0b?style=for-the-badge)
+
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-7B42BC?style=flat-square&logo=terraform&logoColor=white)
+![Jenkins](https://img.shields.io/badge/Jenkins-D24939?style=flat-square&logo=jenkins&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white)
+![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat-square&logo=grafana&logoColor=white)
+![Vault](https://img.shields.io/badge/Vault-FFEC6E?style=flat-square&logo=vault&logoColor=black)
+![SonarQube](https://img.shields.io/badge/SonarQube-4E9BCD?style=flat-square&logo=sonarqube&logoColor=white)
+![Trivy](https://img.shields.io/badge/Trivy-1904DA?style=flat-square&logo=aqua&logoColor=white)
+
+</div>
+
+---
+
+> [!NOTE]
+> This repository is designed for learners who have already completed DevOps fundamentals, including Linux, Git, GitHub, Docker, Kubernetes, Terraform, Jenkins, GitHub Actions, Prometheus, and Grafana.
+
+<div align="center">
+
+<img src="assets/devsecops-pipeline.svg" alt="Security at every stage of the pipeline" width="100%"/>
+
+</div>
 
 ---
 
 ## 📚 Table of Contents
 
-- [01. DevSecOps Fundamentals](#01-devsecops-fundamentals)
-- [02. Linux Security](#02-linux-security)
-- [03. Git, GitHub and Secret Security](#03-git-github-and-secret-security)
-- [04. Static Application Security Testing (SAST)](#04-static-application-security-testing-sast)
-- [05. Software Composition Analysis (SCA) and SBOM](#05-software-composition-analysis-sca-and-sbom)
-- [06. Dynamic Application Security Testing (DAST)](#06-dynamic-application-security-testing-dast)
-- [07. Docker and Container Security](#07-docker-and-container-security)
-- [08. Kubernetes Security](#08-kubernetes-security)
-- [09. Terraform and Infrastructure as Code Security](#09-terraform-and-infrastructure-as-code-security)
-- [10. Jenkins and GitHub Actions Security](#10-jenkins-and-github-actions-security)
-- [11. Secrets Management and Cryptography](#11-secrets-management-and-cryptography)
-- [12. Security Monitoring, Incident Response and Capstone Project](#12-security-monitoring-incident-response-and-capstone-project)
+| # | Module | Key Tools |
+| :---: | :--- | :--- |
+| 01 | [DevSecOps Fundamentals](#01-devsecops-fundamentals) | Concepts, OWASP Top 10, Threat Modeling |
+| 02 | [Linux Security](#02-linux-security) | SSH, sudo, Firewall, Auditing |
+| 03 | [Git, GitHub and Secret Security](#03-git-github-and-secret-security) | Gitleaks |
+| 04 | [Static Application Security Testing (SAST)](#04-static-application-security-testing-sast) | SonarQube |
+| 05 | [Software Composition Analysis (SCA) and SBOM](#05-software-composition-analysis-sca-and-sbom) | OWASP Dependency-Check, Syft |
+| 06 | [Dynamic Application Security Testing (DAST)](#06-dynamic-application-security-testing-dast) | OWASP ZAP |
+| 07 | [Docker and Container Security](#07-docker-and-container-security) | Trivy, Syft, Cosign |
+| 08 | [Kubernetes Security](#08-kubernetes-security) | Trivy, Kyverno, Falco |
+| 09 | [Terraform and Infrastructure as Code Security](#09-terraform-and-infrastructure-as-code-security) | Checkov |
+| 10 | [Jenkins and GitHub Actions Security](#10-jenkins-and-github-actions-security) | Gitleaks, SonarQube, Dependency-Check, Trivy |
+| 11 | [Secrets Management and Cryptography](#11-secrets-management-and-cryptography) | HashiCorp Vault |
+| 12 | [Security Monitoring, Incident Response and Capstone Project](#12-security-monitoring-incident-response-and-capstone-project) | Falco, Prometheus, Grafana, Loki, Trivy, Cosign, Checkov |
 
 ---
 
@@ -52,7 +86,7 @@ This repository is designed for learners who have already completed DevOps funda
 
 ### 03. Git, GitHub and Secret Security
 
-**Tool:** Gitleaks
+🔧 **Tool:** `Gitleaks`
 
 - GitHub repository security
 - Branch protection and pull request approvals
@@ -65,7 +99,7 @@ This repository is designed for learners who have already completed DevOps funda
 
 ### 04. Static Application Security Testing (SAST)
 
-**Tool:** SonarQube
+🔧 **Tool:** `SonarQube`
 
 - SAST fundamentals
 - Static code analysis
@@ -78,7 +112,7 @@ This repository is designed for learners who have already completed DevOps funda
 
 ### 05. Software Composition Analysis (SCA) and SBOM
 
-**Tools:** OWASP Dependency-Check, Syft
+🔧 **Tools:** `OWASP Dependency-Check` · `Syft`
 
 - Third-party dependency security
 - Direct and transitive dependencies
@@ -91,7 +125,7 @@ This repository is designed for learners who have already completed DevOps funda
 
 ### 06. Dynamic Application Security Testing (DAST)
 
-**Tool:** OWASP ZAP
+🔧 **Tool:** `OWASP ZAP`
 
 - DAST fundamentals
 - SAST vs. DAST
@@ -105,7 +139,7 @@ This repository is designed for learners who have already completed DevOps funda
 
 ### 07. Docker and Container Security
 
-**Tools:** Trivy, Syft, Cosign
+🔧 **Tools:** `Trivy` · `Syft` · `Cosign`
 
 - Container security architecture
 - Secure Dockerfile practices
@@ -120,7 +154,7 @@ This repository is designed for learners who have already completed DevOps funda
 
 ### 08. Kubernetes Security
 
-**Tools:** Trivy, Kyverno, Falco
+🔧 **Tools:** `Trivy` · `Kyverno` · `Falco`
 
 - Kubernetes security architecture
 - RBAC and least-privilege access
@@ -136,7 +170,7 @@ This repository is designed for learners who have already completed DevOps funda
 
 ### 09. Terraform and Infrastructure as Code Security
 
-**Tool:** Checkov
+🔧 **Tool:** `Checkov`
 
 - Infrastructure as Code security
 - Terraform security risks
@@ -151,7 +185,7 @@ This repository is designed for learners who have already completed DevOps funda
 
 ### 10. Jenkins and GitHub Actions Security
 
-**Tools:** Gitleaks, SonarQube, OWASP Dependency-Check, Trivy
+🔧 **Tools:** `Gitleaks` · `SonarQube` · `OWASP Dependency-Check` · `Trivy`
 
 - CI/CD threat modeling
 - Jenkins controller and agent security
@@ -167,7 +201,7 @@ This repository is designed for learners who have already completed DevOps funda
 
 ### 11. Secrets Management and Cryptography
 
-**Tool:** HashiCorp Vault
+🔧 **Tool:** `HashiCorp Vault`
 
 - Secrets management fundamentals
 - Symmetric and asymmetric encryption
@@ -182,9 +216,9 @@ This repository is designed for learners who have already completed DevOps funda
 
 ### 12. Security Monitoring, Incident Response and Capstone Project
 
-**Tools:** Falco, Prometheus, Grafana, Loki, Trivy, Cosign, Checkov
+🔧 **Tools:** `Falco` · `Prometheus` · `Grafana` · `Loki` · `Trivy` · `Cosign` · `Checkov`
 
-#### Security Monitoring and Incident Response
+#### 🚨 Security Monitoring and Incident Response
 
 - Security logging and audit trails
 - Runtime threat detection
@@ -193,7 +227,7 @@ This repository is designed for learners who have already completed DevOps funda
 - Incident investigation and root cause analysis
 - Vulnerability remediation and reporting
 
-#### Capstone Project: End-to-End DevSecOps Pipeline
+#### 🏆 Capstone Project: End-to-End DevSecOps Pipeline
 
 - Integrate Gitleaks for secret detection
 - Integrate SonarQube for SAST
@@ -212,21 +246,21 @@ This repository is designed for learners who have already completed DevOps funda
 ## 🛠️ Tools Covered
 
 | Security Area | Tool |
-| --- | --- |
-| Secret Scanning | Gitleaks |
-| Static Application Security Testing | SonarQube |
-| Software Composition Analysis | OWASP Dependency-Check |
-| Dynamic Application Security Testing | OWASP ZAP |
-| Container Security Scanning | Trivy |
-| Software Bill of Materials | Syft |
-| Container Image Signing | Cosign |
-| Kubernetes Policy Enforcement | Kyverno |
-| Runtime Threat Detection | Falco |
-| Infrastructure as Code Security | Checkov |
-| Secrets Management | HashiCorp Vault |
-| Metrics Monitoring | Prometheus |
-| Dashboards and Visualization | Grafana |
-| Log Aggregation | Loki |
+| :--- | :--- |
+| 🔑 Secret Scanning | Gitleaks |
+| 🧩 Static Application Security Testing | SonarQube |
+| 📦 Software Composition Analysis | OWASP Dependency-Check |
+| 🌐 Dynamic Application Security Testing | OWASP ZAP |
+| 🐳 Container Security Scanning | Trivy |
+| 📋 Software Bill of Materials | Syft |
+| ✍️ Container Image Signing | Cosign |
+| ☸️ Kubernetes Policy Enforcement | Kyverno |
+| 👁️ Runtime Threat Detection | Falco |
+| 🏗️ Infrastructure as Code Security | Checkov |
+| 🔐 Secrets Management | HashiCorp Vault |
+| 📈 Metrics Monitoring | Prometheus |
+| 📊 Dashboards and Visualization | Grafana |
+| 🗂️ Log Aggregation | Loki |
 
 ---
 
@@ -234,16 +268,16 @@ This repository is designed for learners who have already completed DevOps funda
 
 By completing this repository, learners will be able to:
 
-- Integrate security into existing DevOps workflows.
-- Identify and remediate source code vulnerabilities.
-- Detect vulnerable dependencies and generate SBOMs.
-- Build and distribute secure container images.
-- Apply Kubernetes security policies and runtime protection.
-- Identify insecure Terraform configurations before deployment.
-- Secure Jenkins and GitHub Actions pipelines.
-- Manage application secrets securely.
-- Monitor security events and investigate incidents.
-- Build an end-to-end DevSecOps pipeline with automated security gates.
+- ✅ Integrate security into existing DevOps workflows.
+- ✅ Identify and remediate source code vulnerabilities.
+- ✅ Detect vulnerable dependencies and generate SBOMs.
+- ✅ Build and distribute secure container images.
+- ✅ Apply Kubernetes security policies and runtime protection.
+- ✅ Identify insecure Terraform configurations before deployment.
+- ✅ Secure Jenkins and GitHub Actions pipelines.
+- ✅ Manage application secrets securely.
+- ✅ Monitor security events and investigate incidents.
+- ✅ Build an end-to-end DevSecOps pipeline with automated security gates.
 
 ---
 
@@ -251,13 +285,12 @@ By completing this repository, learners will be able to:
 
 Each module will include:
 
-- Concept explanations
-- Tool installation and configuration
-- Step-by-step hands-on labs
-- Real-world scenarios
-- Troubleshooting exercises
-- Security best practices
-- Practical implementation tasks
+| | |
+| :--- | :--- |
+| 📖 Concept explanations | 🔧 Tool installation and configuration |
+| 🧑‍🔬 Step-by-step hands-on labs | 🌍 Real-world scenarios |
+| 🐞 Troubleshooting exercises | 🛡️ Security best practices |
+| 🚀 Practical implementation tasks | |
 
 ---
 
@@ -265,17 +298,20 @@ Each module will include:
 
 Learners should already have working knowledge of:
 
-- Linux
-- Git and GitHub
-- Docker
-- Kubernetes
-- Terraform
-- Jenkins
-- GitHub Actions
-- Prometheus and Grafana
+| | | | |
+| :---: | :---: | :---: | :---: |
+| 🐧 Linux | 🐙 Git and GitHub | 🐳 Docker | ☸️ Kubernetes |
+| 🏗️ Terraform | 🔧 Jenkins | ⚙️ GitHub Actions | 📊 Prometheus and Grafana |
 
-This repository focuses on adding security capabilities to these existing DevOps skills rather than teaching the tools from scratch.
+> [!TIP]
+> This repository focuses on adding security capabilities to these existing DevOps skills rather than teaching the tools from scratch.
 
 ---
 
-**Learn. Secure. Automate. Deploy. 🛡️**
+<div align="center">
+
+### Learn. Secure. Automate. Deploy. 🛡️
+
+⭐ If you find this repository useful, consider giving it a star!
+
+</div>
