@@ -1,6 +1,6 @@
 
-# DevSecOps Zero to Hero 🛡️
-<img src="https://github.com/bhuvan-raj/DevSecOps-Zero-to-Hero/blob/main/assets/123.jpeg"
+# DevSecOps Zero to Hero 
+<img src="https://github.com/bhuvan-raj/DevSecOps-Zero-to-Hero/blob/main/assets/9029A461-4CEC-4A8F-9F62-5A8BBA0F64C1.png"
      alt="Banner"/>
 
 A structured, hands-on learning repository for mastering DevSecOps by integrating security into the software development lifecycle, CI/CD pipelines, containers, Kubernetes, and infrastructure as code.
