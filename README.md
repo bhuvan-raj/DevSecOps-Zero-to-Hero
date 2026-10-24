@@ -1,274 +1,281 @@
-# 🚀 DevSecOps Zero to Hero
 
+# DevSecOps Zero to Hero 🛡️
 <img src="https://github.com/bhuvan-raj/DevSecOps-Zero-to-Hero/blob/main/assets/123.jpeg"
      alt="Banner"/>
-
-DevSecOps Zero to Hero 🛡️
 
 A structured, hands-on learning repository for mastering DevSecOps by integrating security into the software development lifecycle, CI/CD pipelines, containers, Kubernetes, and infrastructure as code.
 
 This repository is designed for learners who have already completed DevOps fundamentals, including Linux, Git, GitHub, Docker, Kubernetes, Terraform, Jenkins, GitHub Actions, Prometheus, and Grafana.
 
-📚 Table of Contents
+---
 
-* 01. DevSecOps Fundamentals
-* 02. Linux Security
-* 03. Git, GitHub and Secret Security
-* 04. Static Application Security Testing (SAST)
-* 05. Software Composition Analysis (SCA) and SBOM
-* 06. Dynamic Application Security Testing (DAST)
-* 07. Docker and Container Security
-* 08. Kubernetes Security
-* 09. Terraform and Infrastructure as Code Security
-* 10. Jenkins and GitHub Actions Security
-* 11. Secrets Management and Cryptography
-* 12. Security Monitoring, Incident Response and Capstone Project
+## 📚 Table of Contents
 
-⸻
+- [01. DevSecOps Fundamentals](#01-devsecops-fundamentals)
+- [02. Linux Security](#02-linux-security)
+- [03. Git, GitHub and Secret Security](#03-git-github-and-secret-security)
+- [04. Static Application Security Testing (SAST)](#04-static-application-security-testing-sast)
+- [05. Software Composition Analysis (SCA) and SBOM](#05-software-composition-analysis-sca-and-sbom)
+- [06. Dynamic Application Security Testing (DAST)](#06-dynamic-application-security-testing-dast)
+- [07. Docker and Container Security](#07-docker-and-container-security)
+- [08. Kubernetes Security](#08-kubernetes-security)
+- [09. Terraform and Infrastructure as Code Security](#09-terraform-and-infrastructure-as-code-security)
+- [10. Jenkins and GitHub Actions Security](#10-jenkins-and-github-actions-security)
+- [11. Secrets Management and Cryptography](#11-secrets-management-and-cryptography)
+- [12. Security Monitoring, Incident Response and Capstone Project](#12-security-monitoring-incident-response-and-capstone-project)
 
-🛡️ Module Overview
+---
 
-01. DevSecOps Fundamentals
+## 🛡️ Module Overview
 
-* DevOps vs. DevSecOps
-* DevSecOps lifecycle
-* Shift-left security
-* Secure Software Development Life Cycle (SSDLC)
-* Security gates in CI/CD pipelines
-* OWASP Top 10 overview
-* SAST, DAST, SCA, IaC scanning and container scanning
-* Threat modeling fundamentals
+### 01. DevSecOps Fundamentals
 
-02. Linux Security
+- DevOps vs. DevSecOps
+- DevSecOps lifecycle
+- Shift-left security
+- Secure Software Development Life Cycle (SSDLC)
+- Security gates in CI/CD pipelines
+- OWASP Top 10 overview
+- SAST, DAST, SCA, IaC scanning and container scanning
+- Threat modeling fundamentals
 
-* Linux security architecture and attack surface
-* Users, groups, permissions and ACLs
-* SUID, SGID and privilege escalation risks
-* Linux capabilities and sudo security
-* SSH hardening
-* Firewall fundamentals
-* Linux auditing and authentication logs
-* Security baselines and vulnerability remediation
+### 02. Linux Security
 
-03. Git, GitHub and Secret Security
+- Linux security architecture and attack surface
+- Users, groups, permissions and ACLs
+- SUID, SGID and privilege escalation risks
+- Linux capabilities and sudo security
+- SSH hardening
+- Firewall fundamentals
+- Linux auditing and authentication logs
+- Security baselines and vulnerability remediation
 
-Tool: Gitleaks
+### 03. Git, GitHub and Secret Security
 
-* GitHub repository security
-* Branch protection and pull request approvals
-* Secret leakage in source code
-* Scanning Git history for exposed credentials
-* Secret remediation and rotation
-* GitHub Actions permissions
-* Secure third-party GitHub Actions usage
-* Repository access control and least privilege
+**Tool:** Gitleaks
 
-04. Static Application Security Testing (SAST)
+- GitHub repository security
+- Branch protection and pull request approvals
+- Secret leakage in source code
+- Scanning Git history for exposed credentials
+- Secret remediation and rotation
+- GitHub Actions permissions
+- Secure third-party GitHub Actions usage
+- Repository access control and least privilege
 
-Tool: SonarQube
+### 04. Static Application Security Testing (SAST)
 
-* SAST fundamentals
-* Static code analysis
-* Identifying security vulnerabilities in source code
-* Security rules and severity levels
-* Vulnerability remediation
-* False-positive management
-* Security quality gates
-* SonarQube integration with Jenkins and GitHub Actions
+**Tool:** SonarQube
 
-05. Software Composition Analysis (SCA) and SBOM
+- SAST fundamentals
+- Static code analysis
+- Identifying security vulnerabilities in source code
+- Security rules and severity levels
+- Vulnerability remediation
+- False-positive management
+- Security quality gates
+- SonarQube integration with Jenkins and GitHub Actions
 
-Tools: OWASP Dependency-Check, Syft
+### 05. Software Composition Analysis (SCA) and SBOM
 
-* Third-party dependency security
-* Direct and transitive dependencies
-* CVE, CWE and CVSS fundamentals
-* Vulnerable dependency detection
-* Dependency remediation
-* Software Bill of Materials (SBOM)
-* SBOM generation and analysis
-* Dependency security gates in CI/CD
+**Tools:** OWASP Dependency-Check, Syft
 
-06. Dynamic Application Security Testing (DAST)
+- Third-party dependency security
+- Direct and transitive dependencies
+- CVE, CWE and CVSS fundamentals
+- Vulnerable dependency detection
+- Dependency remediation
+- Software Bill of Materials (SBOM)
+- SBOM generation and analysis
+- Dependency security gates in CI/CD
 
-Tool: OWASP ZAP
+### 06. Dynamic Application Security Testing (DAST)
 
-* DAST fundamentals
-* SAST vs. DAST
-* OWASP Top 10 vulnerabilities
-* SQL injection and cross-site scripting
-* Authentication and authorization flaws
-* API security testing
-* Automated web application scanning
-* DAST integration with CI/CD
-* Vulnerability reports and remediation
+**Tool:** OWASP ZAP
 
-07. Docker and Container Security
+- DAST fundamentals
+- SAST vs. DAST
+- OWASP Top 10 vulnerabilities
+- SQL injection and cross-site scripting
+- Authentication and authorization flaws
+- API security testing
+- Automated web application scanning
+- DAST integration with CI/CD
+- Vulnerability reports and remediation
 
-Tools: Trivy, Syft, Cosign
+### 07. Docker and Container Security
 
-* Container security architecture
-* Secure Dockerfile practices
-* Non-root containers and least privilege
-* Linux capabilities and container isolation
-* Image vulnerability scanning with Trivy
-* Base image security
-* Software Bill of Materials generation
-* Container image signing with Cosign
-* Secure image publishing and verification
-* Container security gates in CI/CD
+**Tools:** Trivy, Syft, Cosign
 
-08. Kubernetes Security
+- Container security architecture
+- Secure Dockerfile practices
+- Non-root containers and least privilege
+- Linux capabilities and container isolation
+- Image vulnerability scanning with Trivy
+- Base image security
+- Software Bill of Materials generation
+- Container image signing with Cosign
+- Secure image publishing and verification
+- Container security gates in CI/CD
 
-Tools: Trivy, Kyverno, Falco
+### 08. Kubernetes Security
 
-* Kubernetes security architecture
-* RBAC and least-privilege access
-* Service account security
-* Pod Security Standards
-* Security contexts and Linux capabilities
-* Kubernetes NetworkPolicies
-* Secrets management fundamentals
-* Admission control and policy enforcement
-* Image vulnerability scanning
-* Runtime threat detection with Falco
-* Kubernetes security misconfiguration scanning
+**Tools:** Trivy, Kyverno, Falco
 
-09. Terraform and Infrastructure as Code Security
+- Kubernetes security architecture
+- RBAC and least-privilege access
+- Service account security
+- Pod Security Standards
+- Security contexts and Linux capabilities
+- Kubernetes NetworkPolicies
+- Secrets management fundamentals
+- Admission control and policy enforcement
+- Image vulnerability scanning
+- Runtime threat detection with Falco
+- Kubernetes security misconfiguration scanning
 
-Tool: Checkov
+### 09. Terraform and Infrastructure as Code Security
 
-* Infrastructure as Code security
-* Terraform security risks
-* Detecting insecure resource configurations
-* Hardcoded credentials and exposed secrets
-* Publicly exposed cloud resources
-* IAM misconfiguration risks
-* Terraform security scanning with Checkov
-* Security policies and compliance checks
-* IaC scanning in CI/CD
-* Preventing insecure infrastructure deployments
+**Tool:** Checkov
 
-10. Jenkins and GitHub Actions Security
+- Infrastructure as Code security
+- Terraform security risks
+- Detecting insecure resource configurations
+- Hardcoded credentials and exposed secrets
+- Publicly exposed cloud resources
+- IAM misconfiguration risks
+- Terraform security scanning with Checkov
+- Security policies and compliance checks
+- IaC scanning in CI/CD
+- Preventing insecure infrastructure deployments
 
-Tools: Gitleaks, SonarQube, OWASP Dependency-Check, Trivy
+### 10. Jenkins and GitHub Actions Security
 
-* CI/CD threat modeling
-* Jenkins controller and agent security
-* Jenkins credentials management
-* GitHub Actions workflow permissions
-* Secure third-party actions
-* OpenID Connect (OIDC) for cloud authentication
-* Pipeline injection risks
-* Integrating secret scanning, SAST, SCA and container scanning
-* Security gates and build failure conditions
-* Secure artifact handling
-* Protecting production deployment workflows
+**Tools:** Gitleaks, SonarQube, OWASP Dependency-Check, Trivy
 
-11. Secrets Management and Cryptography
+- CI/CD threat modeling
+- Jenkins controller and agent security
+- Jenkins credentials management
+- GitHub Actions workflow permissions
+- Secure third-party actions
+- OpenID Connect (OIDC) for cloud authentication
+- Pipeline injection risks
+- Integrating secret scanning, SAST, SCA and container scanning
+- Security gates and build failure conditions
+- Secure artifact handling
+- Protecting production deployment workflows
 
-Tool: HashiCorp Vault
+### 11. Secrets Management and Cryptography
 
-* Secrets management fundamentals
-* Symmetric and asymmetric encryption
-* Hashing and digital signatures
-* TLS and certificate fundamentals
-* Secret storage and rotation
-* Centralized secrets management
-* HashiCorp Vault architecture
-* Authentication and access policies
-* Secure secret retrieval in CI/CD
-* Preventing credentials from appearing in source code and logs
+**Tool:** HashiCorp Vault
 
-12. Security Monitoring, Incident Response and Capstone Project
+- Secrets management fundamentals
+- Symmetric and asymmetric encryption
+- Hashing and digital signatures
+- TLS and certificate fundamentals
+- Secret storage and rotation
+- Centralized secrets management
+- HashiCorp Vault architecture
+- Authentication and access policies
+- Secure secret retrieval in CI/CD
+- Preventing credentials from appearing in source code and logs
 
-Tools: Falco, Prometheus, Grafana, Loki, Trivy, Cosign, Checkov
+### 12. Security Monitoring, Incident Response and Capstone Project
 
-Security monitoring and incident response
+**Tools:** Falco, Prometheus, Grafana, Loki, Trivy, Cosign, Checkov
 
-* Security logging and audit trails
-* Runtime threat detection
-* Monitoring suspicious container activity
-* Security alerts and dashboards
-* Incident investigation and root cause analysis
-* Vulnerability remediation and reporting
+#### Security Monitoring and Incident Response
 
-Capstone project: End-to-End DevSecOps Pipeline
+- Security logging and audit trails
+- Runtime threat detection
+- Monitoring suspicious container activity
+- Security alerts and dashboards
+- Incident investigation and root cause analysis
+- Vulnerability remediation and reporting
 
-* Integrate Gitleaks for secret detection
-* Integrate SonarQube for SAST
-* Integrate OWASP Dependency-Check for dependency scanning
-* Scan container images with Trivy
-* Generate an SBOM using Syft
-* Sign and verify images using Cosign
-* Scan Terraform configurations using Checkov
-* Enforce Kubernetes security policies using Kyverno
-* Detect runtime threats using Falco
-* Monitor security events using Prometheus, Grafana and Loki
-* Implement security gates in Jenkins or GitHub Actions
+#### Capstone Project: End-to-End DevSecOps Pipeline
 
-⸻
+- Integrate Gitleaks for secret detection
+- Integrate SonarQube for SAST
+- Integrate OWASP Dependency-Check for dependency scanning
+- Scan container images with Trivy
+- Generate an SBOM using Syft
+- Sign and verify images using Cosign
+- Scan Terraform configurations using Checkov
+- Enforce Kubernetes security policies using Kyverno
+- Detect runtime threats using Falco
+- Monitor security events using Prometheus, Grafana and Loki
+- Implement security gates in Jenkins or GitHub Actions
 
-🛠️ Tools Covered
+---
 
-Security Area	Tool
-Secret Scanning	Gitleaks
-Static Application Security Testing	SonarQube
-Software Composition Analysis	OWASP Dependency-Check
-Dynamic Application Security Testing	OWASP ZAP
-Container Security Scanning	Trivy
-Software Bill of Materials	Syft
-Container Image Signing	Cosign
-Kubernetes Policy Enforcement	Kyverno
-Runtime Threat Detection	Falco
-Infrastructure as Code Security	Checkov
-Secrets Management	HashiCorp Vault
-Metrics Monitoring	Prometheus
-Dashboards and Visualization	Grafana
-Log Aggregation	Loki
+## 🛠️ Tools Covered
 
-🎯 Learning Objectives
+| Security Area | Tool |
+| --- | --- |
+| Secret Scanning | Gitleaks |
+| Static Application Security Testing | SonarQube |
+| Software Composition Analysis | OWASP Dependency-Check |
+| Dynamic Application Security Testing | OWASP ZAP |
+| Container Security Scanning | Trivy |
+| Software Bill of Materials | Syft |
+| Container Image Signing | Cosign |
+| Kubernetes Policy Enforcement | Kyverno |
+| Runtime Threat Detection | Falco |
+| Infrastructure as Code Security | Checkov |
+| Secrets Management | HashiCorp Vault |
+| Metrics Monitoring | Prometheus |
+| Dashboards and Visualization | Grafana |
+| Log Aggregation | Loki |
+
+---
+
+## 🎯 Learning Objectives
 
 By completing this repository, learners will be able to:
 
-* Integrate security into existing DevOps workflows.
-* Identify and remediate source code vulnerabilities.
-* Detect vulnerable dependencies and generate SBOMs.
-* Build and distribute secure container images.
-* Apply Kubernetes security policies and runtime protection.
-* Identify insecure Terraform configurations before deployment.
-* Secure Jenkins and GitHub Actions pipelines.
-* Manage application secrets securely.
-* Monitor security events and investigate incidents.
-* Build an end-to-end DevSecOps pipeline with automated security gates.
+- Integrate security into existing DevOps workflows.
+- Identify and remediate source code vulnerabilities.
+- Detect vulnerable dependencies and generate SBOMs.
+- Build and distribute secure container images.
+- Apply Kubernetes security policies and runtime protection.
+- Identify insecure Terraform configurations before deployment.
+- Secure Jenkins and GitHub Actions pipelines.
+- Manage application secrets securely.
+- Monitor security events and investigate incidents.
+- Build an end-to-end DevSecOps pipeline with automated security gates.
 
-🧪 Learning Approach
+---
+
+## 🧪 Learning Approach
 
 Each module will include:
 
-* Concept explanations
-* Tool installation and configuration
-* Step-by-step hands-on labs
-* Real-world scenarios
-* Troubleshooting exercises
-* Security best practices
-* Practical implementation tasks
+- Concept explanations
+- Tool installation and configuration
+- Step-by-step hands-on labs
+- Real-world scenarios
+- Troubleshooting exercises
+- Security best practices
+- Practical implementation tasks
 
-👨‍💻 Prerequisites
+---
+
+## 👨‍💻 Prerequisites
 
 Learners should already have working knowledge of:
 
-* Linux
-* Git and GitHub
-* Docker
-* Kubernetes
-* Terraform
-* Jenkins
-* GitHub Actions
-* Prometheus and Grafana
+- Linux
+- Git and GitHub
+- Docker
+- Kubernetes
+- Terraform
+- Jenkins
+- GitHub Actions
+- Prometheus and Grafana
 
 This repository focuses on adding security capabilities to these existing DevOps skills rather than teaching the tools from scratch.
 
-⸻
+---
 
-Learn. Secure. Automate. Deploy. 🛡️
+**Learn. Secure. Automate. Deploy. 🛡️**
