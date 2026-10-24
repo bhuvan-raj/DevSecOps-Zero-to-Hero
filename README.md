@@ -305,6 +305,7 @@ Learners should already have working knowledge of:
 
 > [!TIP]
 > This repository focuses on adding security capabilities to these existing DevOps skills rather than teaching the tools from scratch.
+> This Repo is licenses under  [MIT](./LICENSE)
 
 ---
 
