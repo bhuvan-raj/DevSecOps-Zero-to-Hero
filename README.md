@@ -42,22 +42,22 @@ A structured, hands-on learning repository for mastering DevSecOps by integratin
 ---
 
 ## 📚 Table of Contents
-
+ 
 | # | Module | Key Tools |
 | :---: | :--- | :--- |
-| 01 | [DevSecOps Fundamentals](#01-devsecops-fundamentals) | Concepts, OWASP Top 10, Threat Modeling |
-| 02 | [Linux Security](#02-linux-security) | SSH, sudo, Firewall, Auditing |
-| 03 | [Git, GitHub and Secret Security](#03-git-github-and-secret-security) | Gitleaks |
-| 04 | [Static Application Security Testing (SAST)](#04-static-application-security-testing-sast) | SonarQube |
-| 05 | [Software Composition Analysis (SCA) and SBOM](#05-software-composition-analysis-sca-and-sbom) | OWASP Dependency-Check, Syft |
-| 06 | [Dynamic Application Security Testing (DAST)](#06-dynamic-application-security-testing-dast) | OWASP ZAP |
-| 07 | [Docker and Container Security](#07-docker-and-container-security) | Trivy, Syft, Cosign |
-| 08 | [Kubernetes Security](#08-kubernetes-security) | Trivy, Kyverno, Falco |
-| 09 | [Terraform and Infrastructure as Code Security](#09-terraform-and-infrastructure-as-code-security) | Checkov |
-| 10 | [Jenkins and GitHub Actions Security](#10-jenkins-and-github-actions-security) | Gitleaks, SonarQube, Dependency-Check, Trivy |
-| 11 | [Secrets Management and Cryptography](#11-secrets-management-and-cryptography) | HashiCorp Vault |
-| 12 | [Security Monitoring, Incident Response and Capstone Project](#12-security-monitoring-incident-response-and-capstone-project) | Falco, Prometheus, Grafana, Loki, Trivy, Cosign, Checkov |
-
+| 01 | [DevSecOps Fundamentals](./01-devsecops-fundamentals/README.md) | Concepts, OWASP Top 10, Threat Modeling |
+| 02 | [Linux Security](./02-linux-security/README.md) | SSH, sudo, Firewall, Auditing |
+| 03 | [Git, GitHub and Secret Security](./03-git-github-and-secret-security/README.md) | Gitleaks |
+| 04 | [Static Application Security Testing (SAST)](./04-static-application-security-testing-sast/README.md) | SonarQube |
+| 05 | [Software Composition Analysis (SCA) and SBOM](./05-software-composition-analysis-sca-and-sbom/README.md) | OWASP Dependency-Check, Syft |
+| 06 | [Dynamic Application Security Testing (DAST)](./06-dynamic-application-security-testing-dast/README.md) | OWASP ZAP |
+| 07 | [Docker and Container Security](./07-docker-and-container-security/README.md) | Trivy, Syft, Cosign |
+| 08 | [Kubernetes Security](./08-kubernetes-security/README.md) | Trivy, Kyverno, Falco |
+| 09 | [Terraform and Infrastructure as Code Security](./09-terraform-and-infrastructure-as-code-security/README.md) | Checkov |
+| 10 | [Jenkins and GitHub Actions Security](./10-jenkins-and-github-actions-security/README.md) | Gitleaks, SonarQube, Dependency-Check, Trivy |
+| 11 | [Secrets Management and Cryptography](./11-secrets-management-and-cryptography/README.md) | HashiCorp Vault |
+| 12 | [Security Monitoring, Incident Response and Capstone Project](./12-security-monitoring-incident-response-and-capstone-project/README.md) | Falco, Prometheus, Grafana, Loki, Trivy, Cosign, Checkov |
+ 
 ---
 
 ## 🛡️ Module Overview
