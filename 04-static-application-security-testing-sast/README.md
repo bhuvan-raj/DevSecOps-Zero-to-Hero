@@ -9,7 +9,7 @@ SAST helps developers detect security issues early in the Software Development L
 In this module, we will use **SonarQube** to perform static code analysis and integrate security checks into CI/CD pipelines.
 
 > [!NOTE]
-> This module builds on [Module 03](./03-git-github-and-secret-security/README.md) There you learned to stop **secrets** from entering your repository. Here you learn to find **insecure code** (such as SQL injection or weak cryptography) before it is merged.
+> This module builds on [Module 03](../03-git-github-and-secret-security/README.md) There you learned to stop **secrets** from entering your repository. Here you learn to find **insecure code** (such as SQL injection or weak cryptography) before it is merged.
 
 > [!IMPORTANT]
 > **Lab environment:** You need a machine with **Docker and Docker Compose**, about **4 GB of free RAM** for SonarQube, and a terminal. Linux, macOS, or Windows with WSL2 all work. The lab application in this module is **intentionally vulnerable**. Scan it, but **never run it on a public network or deploy it**.
