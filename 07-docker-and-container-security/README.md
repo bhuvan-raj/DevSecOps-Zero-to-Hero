@@ -51,7 +51,6 @@ By the end of this module, you will be able to:
 17. [Best Practices](#17-best-practices)
 18. [Knowledge Check](#18-knowledge-check)
 19. [Official References](#19-official-references)
-20. [Module Completion Checklist](#20-module-completion-checklist)
 
 ---
 
@@ -2770,69 +2769,6 @@ Level 4  Enforced    Admission control rejects unsigned and non-compliant images
 
 ---
 
-## 20. Module Completion Checklist
-
-Tick each box when you can do it **without looking at the notes**.
-
-### Concepts
-
-- [ ] I can explain how a container differs from a virtual machine and why the shared kernel matters.
-- [ ] I can name the kernel features behind containers (namespaces, cgroups, capabilities, seccomp, MAC).
-- [ ] I can explain image layers and why secrets in any layer are permanent.
-- [ ] I can explain the difference between tags and digests, and why digests matter.
-- [ ] I can list the main container risks and the control for each.
-- [ ] I can explain why `--privileged`, the Docker socket, and host mounts are dangerous.
-
-### Building Secure Images
-
-- [ ] I can write a Dockerfile with a minimal pinned base, multi-stage build, and non-root numeric user.
-- [ ] I can keep secrets out of images using `.dockerignore`, BuildKit secrets, and runtime injection.
-- [ ] I can lint a Dockerfile with Hadolint and `trivy config`.
-- [ ] I can compare base image types and choose appropriately.
-
-### Trivy
-
-- [ ] I installed Trivy from a pinned, verified release (and know why `curl | sh` and `latest` are risky).
-- [ ] I can scan an image, a tar file, a folder, and a Dockerfile.
-- [ ] I can filter by severity, ignore unfixed issues, and set exit codes for a gate.
-- [ ] I can read a Trivy report, including the Status column.
-- [ ] I can prioritize findings by risk, not just severity.
-- [ ] I can remediate by updating the base image, dependencies, and image structure, and then prove it by rescanning.
-- [ ] I can generate and inspect an SBOM and scan it.
-- [ ] I can manage exceptions safely with reasons and expiry dates.
-
-### Cosign
-
-- [ ] I can explain what signing proves and does not prove.
-- [ ] I can compare key-based and keyless signing.
-- [ ] I can sign an image by digest and verify it.
-- [ ] I can attach and verify an SBOM attestation.
-- [ ] I can verify keyless signatures with a pinned identity and issuer.
-- [ ] I can demonstrate that verification catches a tampered tag.
-
-### CI/CD and Runtime
-
-- [ ] I can build a GitHub Actions workflow that builds, scans, gates, pushes, signs, and verifies.
-- [ ] I can build the equivalent Jenkins pipeline without mounting the Docker socket into the scanner.
-- [ ] I pin actions to commit SHAs and tool versions, and verify downloads.
-- [ ] I can run a container with least-privilege flags and prove the restrictions work.
-- [ ] I can describe how these controls map to Kubernetes `securityContext` settings.
-
-### Supply Chain Awareness
-
-- [ ] I can summarize the March 2026 Trivy incident and the defenses against it.
-
-### Labs
-
-- [ ] Lab 1: Explored container risks
-- [ ] Lab 2: Wrote a secure Dockerfile
-- [ ] Lab 3: Scanned with Trivy
-- [ ] Lab 4: Remediated step by step
-- [ ] Lab 5: Generated and inspected an SBOM
-- [ ] Lab 6: Signed and verified with Cosign (including the tamper test)
-- [ ] Lab 7: Runtime hardening
-- [ ] Lab 8: Container security in GitHub Actions
-- [ ] Lab 9: Container security in Jenkins
 
 ---
 
