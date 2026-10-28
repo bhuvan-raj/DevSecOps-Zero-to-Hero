@@ -1,1370 +1,1811 @@
-# Module 05: Software Composition Analysis (SCA) & SBOM 📦
+# Module 07: Docker & Container Security 🐳🔐
 
 ## 📌 Overview
 
-Modern applications are mostly **assembled, not written**. A typical project contains a small amount of your own code and a very large amount of **third-party open-source code**: frameworks, libraries, and their dependencies.
+Containerization makes application deployment consistent and portable, but insecure container images, vulnerable packages, excessive privileges, and misconfigured runtime environments can introduce security risks.
 
-**Software Composition Analysis (SCA)** identifies those third-party components, checks them against databases of **known vulnerabilities**, and helps you fix or manage the risk. A **Software Bill of Materials (SBOM)** is the **ingredient list** of your software: a structured, machine-readable inventory of every component inside it.
+Docker security focuses on building, distributing, and running containers securely. Container security extends these practices to the entire container lifecycle, from image creation to runtime execution.
 
-In this module, you will learn how dependencies work, how vulnerabilities are identified and scored (CVE and CVSS), how to scan with **OWASP Dependency-Check**, how to generate SBOMs with **Syft**, how to use **Dependabot**, and how to build **security gates** that stop vulnerable dependencies from reaching production.
+In this module, you will learn how to secure Dockerfiles, scan container images using **Trivy**, sign and verify container images using **Cosign**, and integrate container security checks into CI/CD pipelines.
 
 > [!NOTE]
-> This module continues the story from Module 04. SAST (SonarQube) checks **the code you wrote**. SCA checks **the code you imported**. Module 07 will apply the same ideas to container images.
+> This module builds on the earlier ones. Module 02 taught you Linux permissions, capabilities, and firewalls, which are the exact mechanisms containers are built from. Module 03 taught you to keep secrets out of Git, and you will see how secrets also leak into **images**. Module 05 introduced vulnerabilities, CVEs, and SBOMs, which you now apply to container images.
 
 > [!IMPORTANT]
-> **Lab environment:** You need **Docker** and a terminal, plus a free **NVD API key** for Dependency-Check (the steps are in section 5). The lab project contains **deliberately vulnerable library versions** so the scanner has something to find. Scan them, but **never deploy or run** that project as a real service.
+> **Lab environment:** You need **Docker Engine** (or Docker Desktop) and a terminal. Linux, macOS, or Windows with WSL2 all work. The labs use **fake secrets**, a **deliberately insecure** sample image, and a **local registry bound to `127.0.0.1`**. Never push the insecure sample image to a public registry or run it on a public network.
 
 ## 🎯 Learning Objectives
 
 By the end of this module, you will be able to:
 
-- Explain what Software Composition Analysis is and why it matters.
-- Distinguish direct from transitive dependencies and map a dependency tree.
-- Read CVE records and understand CVSS, EPSS, and the CISA KEV catalog.
-- Run OWASP Dependency-Check and interpret its reports.
-- Triage findings, suppress false positives safely, and prioritize by risk.
-- Explain what an SBOM is and why organizations need one.
-- Compare the SPDX and CycloneDX formats.
-- Generate, inspect, and scan SBOMs with Syft and other tools.
-- Configure and use Dependabot alerts, security updates, and version updates.
-- Integrate SCA and SBOM generation into GitHub Actions and Jenkins.
-- Build security gates and remediate vulnerable dependencies.
+- Understand container security risks and attack surfaces.
+- Identify common Dockerfile security issues.
+- Build secure and minimal container images.
+- Understand container image layers and registries.
+- Scan container images for vulnerabilities using Trivy.
+- Understand vulnerability severity and remediation.
+- Generate and inspect container image SBOMs.
+- Sign container images using Cosign.
+- Verify container image signatures before deployment.
+- Integrate container security into GitHub Actions and Jenkins.
+- Apply container security best practices in production environments.
 
 ## 📚 Table of Contents
 
-1. [What Is SCA?](#1-what-is-sca)
-2. [Direct vs. Transitive Dependencies](#2-direct-vs-transitive-dependencies)
-3. [Understanding CVE and CVSS](#3-understanding-cve-and-cvss)
-4. [Introduction to OWASP Dependency-Check](#4-introduction-to-owasp-dependency-check)
-5. [Scanning Dependencies with Dependency-Check](#5-scanning-dependencies-with-dependency-check)
-6. [Introduction to SBOM](#6-introduction-to-sbom)
-7. [SBOM Formats: SPDX vs. CycloneDX](#7-sbom-formats-spdx-vs-cyclonedx)
-8. [Generating an SBOM with Syft](#8-generating-an-sbom-with-syft)
-9. [Understanding Dependabot](#9-understanding-dependabot)
-10. [Integrating SCA into CI/CD](#10-integrating-sca-into-cicd)
-11. [Security Gates and Vulnerability Remediation](#11-security-gates-and-vulnerability-remediation)
-12. [Hands-On Labs](#12-hands-on-labs)
-13. [Best Practices](#13-best-practices)
-14. [Knowledge Check](#14-knowledge-check)
-15. [Official References](#15-official-references)
-16. [Module Completion Checklist](#16-module-completion-checklist)
+1. [Introduction to Container Security](#1-introduction-to-container-security)
+2. [Docker Security Architecture](#2-docker-security-architecture)
+3. [Common Container Security Risks](#3-common-container-security-risks)
+4. [Writing Secure Dockerfiles](#4-writing-secure-dockerfiles)
+5. [Container Image Security Best Practices](#5-container-image-security-best-practices)
+6. [Introduction to Trivy](#6-introduction-to-trivy)
+7. [Installing Trivy](#7-installing-trivy)
+8. [Scanning Container Images with Trivy](#8-scanning-container-images-with-trivy)
+9. [Understanding Vulnerability Reports](#9-understanding-vulnerability-reports)
+10. [Remediating Container Vulnerabilities](#10-remediating-container-vulnerabilities)
+11. [Introduction to Cosign](#11-introduction-to-cosign)
+12. [Signing Container Images with Cosign](#12-signing-container-images-with-cosign)
+13. [Verifying Container Image Signatures](#13-verifying-container-image-signatures)
+14. [Container Security in CI/CD](#14-container-security-in-cicd)
+15. [Runtime Security Fundamentals](#15-runtime-security-fundamentals)
+16. [Hands-On Labs](#16-hands-on-labs)
+17. [Best Practices](#17-best-practices)
+18. [Knowledge Check](#18-knowledge-check)
+19. [Official References](#19-official-references)
+20. [Module Completion Checklist](#20-module-completion-checklist)
 
 ---
 
-## 1. What Is SCA?
+## 1. Introduction to Container Security
 
-### Most of Your Application Is Someone Else's Code
+### What Is a Container?
 
-```text
- A typical application
-
- +----------------------------------------------------------+
- |  Your own code                                  ~10-20%  |
- |  ######                                                  |
- +----------------------------------------------------------+
- |  Third-party libraries and their dependencies   ~80-90%  |
- |  ######################################################  |
- +----------------------------------------------------------+
-        (illustrative: the exact split varies by project,
-         but open source usually dominates)
-```
-
-Every one of those libraries was written by someone else, may contain bugs and vulnerabilities, and may depend on **more** libraries. You inherit **all** of their security problems.
-
-> **Analogy:** Think of a restaurant meal. SAST is the **chef checking their own recipe and technique**. SCA is checking the **suppliers' labels** on every ingredient for recalls, such as contaminated flour or spoiled milk. You may cook perfectly, but a recalled ingredient still makes customers sick.
-
-### What Is SCA?
-
-**Software Composition Analysis (SCA)** is the practice of:
-
-1. **Identifying** every open-source and third-party component in your software.
-2. **Matching** them against databases of known vulnerabilities.
-3. **Reporting** which ones are affected, how severe the issue is, and which version fixes it.
-4. Often also checking **licenses**, because open-source licenses carry legal obligations.
-
-```text
- Your project  -->  1. Find components  -->  2. Look them up  -->  3. Report
- (manifests,         (name + version)          (vulnerability        (CVE, severity,
-  lock files,                                    databases)           fixed version)
-  JARs, images)
-```
-
-### Why SCA Matters: Log4Shell
-
-In December 2021, a critical flaw (**CVE-2021-44228**, nicknamed **Log4Shell**) was disclosed in **Apache Log4j**, a Java logging library used in a vast number of applications and products. It scored the maximum **CVSS 10.0** and allowed **remote code execution** with a single crafted string.
-
-| Why It Hurt So Much | Lesson |
-| :--- | :--- |
-| Log4j was embedded in **thousands of products** | Most teams did not know whether they used it. |
-| It was often a **transitive dependency** (pulled in by another library) | You cannot fix what you cannot see. |
-| Organizations scrambled for days to answer *"Are we affected?"* | An **SBOM** answers this question in minutes. |
-| Attackers began scanning the internet within hours | Speed of detection and patching matters. |
-
-> **SCA and SBOMs exist so that the next Log4Shell is a ten-minute question, not a ten-day investigation.**
-
-### What SCA Finds, and What It Does Not
-
-| ✅ SCA finds | ❌ SCA does not find |
-| :--- | :--- |
-| **Known** vulnerabilities (CVEs) in libraries you use | Flaws in **your own code** (use SAST, Module 04) |
-| Outdated, unsupported, or end-of-life components | **Unknown** (not yet disclosed) vulnerabilities |
-| License risks and conflicts | Runtime and configuration problems (use DAST, Module 06) |
-| Which version contains the fix | Whether the vulnerable code is **actually reachable** (most tools cannot tell) |
-| The full inventory of components (SBOM) | **Malicious** packages that have no CVE yet (needs extra controls, below) |
-
-### SAST vs. SCA vs. DAST (A Quick Reminder)
-
-| | **SAST** | **SCA** | **DAST** |
-| :--- | :--- | :--- | :--- |
-| Examines | Your source code | Third-party components | The running application |
-| Finds | Insecure code patterns | Known vulnerable libraries | Runtime and config weaknesses |
-| Needs running app | No | No | Yes |
-| Tool in this course | SonarQube (M04) | **Dependency-Check, Syft (M05)** | OWASP ZAP (M06) |
-
-### SCA Is Not Only About CVEs: The Wider Supply Chain
-
-A vulnerability database lists **accidental** bugs. Attackers also attack the **supply chain** deliberately:
-
-| Attack | How It Works | Example Pattern |
-| :--- | :--- | :--- |
-| **Typosquatting** | A malicious package with a name close to a popular one (`reqeusts`, `colourama`) | Developer mistypes the name |
-| **Dependency confusion** | A public package with the **same name as your internal package** but a higher version | Build tool pulls the public one |
-| **Compromised maintainer** | An attacker takes over a maintainer's account and publishes a malicious update | Stolen publishing token |
-| **Malicious update / backdoor** | A trusted project receives a hidden backdoor | The 2024 `xz` compression library backdoor |
-| **Protestware** | A maintainer deliberately sabotages their own package | Libraries changed to erase files or print messages |
-| **Abandoned packages** | Unmaintained libraries never receive fixes | Old, unpatched dependencies |
-| **Worms and credential theft in package registries** | Stolen publish tokens are used to spread malicious versions to many packages | Several npm incidents, including a 2026 campaign that compromised dozens of packages |
-
-CVE-based scanning does **not** catch most of these on day one. You also need the controls in sections 2, 11, and 13: lock files, pinned versions, private registries, update **cooldown** periods, and review of new dependencies.
-
-### Where SCA Fits in the Pipeline
-
-```text
- IDE / commit      Pull request              Build               Release / runtime
- -------------   --------------------   ------------------   ----------------------------
- Dependabot      Dependency review      Dependency-Check     Rescan stored SBOMs daily
- alerts          Dependabot PRs         SBOM generation      (new CVEs appear after release)
-                 Gitleaks (M03)         Syft  + sign SBOM
-                 SAST (M04)
-```
-
----
-
-## 2. Direct vs. Transitive Dependencies
-
-### Two Kinds of Dependencies
-
-| Type | Meaning | Who Chose It |
-| :--- | :--- | :--- |
-| **Direct dependency** | A library **you** declare in your project file | You |
-| **Transitive dependency** | A library that **your dependency** depends on (and so on, many levels deep) | Somebody else, indirectly |
-
-```text
- YOUR PROJECT
-   |
-   +-- flask 3.1.1                      <-- DIRECT (you declared it)
-   |     +-- werkzeug                   <-- transitive (level 2)
-   |     +-- jinja2                     <-- transitive (level 2)
-   |     |     '-- markupsafe           <-- transitive (level 3)
-   |     '-- click                      <-- transitive (level 2)
-   |
-   '-- requests 2.32.4                  <-- DIRECT
-         +-- urllib3                    <-- transitive
-         +-- certifi                    <-- transitive
-         '-- idna                       <-- transitive
-
- You wrote 2 lines in requirements.txt. You now run 10+ libraries.
-```
-
-> **Analogy:** You hire one contractor (direct). That contractor brings **their own subcontractors** (transitive). If a subcontractor does faulty electrical work, **your building** is at risk, even though you never met them.
-
-### Why Transitive Dependencies Matter for Security
-
-| Fact | Consequence |
-| :--- | :--- |
-| Most dependencies in a project are **transitive** | Most of your risk is in libraries you never chose. |
-| You do not see them in your project file | Vulnerabilities are easy to miss. |
-| You cannot always upgrade them directly | The fix may need the parent library to update, or you may need to **override** the version (section 11). |
-| One library can appear in **several versions** at once | Conflict resolution decides which version actually ships. |
-| Log4Shell was often transitive | Many teams discovered it only through scanning. |
-
-### See Your Own Dependency Tree
-
-Every ecosystem has a command to show the tree:
-
-| Ecosystem | Show the Tree | Notes |
-| :--- | :--- | :--- |
-| **Java (Maven)** | `mvn dependency:tree` | Shows scope and conflicts |
-| **Java (Gradle)** | `./gradlew dependencies` | Per configuration |
-| **Python** | `pip install pipdeptree && pipdeptree` | Shows what is installed |
-| **Node.js** | `npm ls --all` | Entire tree |
-| **Go** | `go mod graph` or `go list -m all` | Module graph |
-| **.NET** | `dotnet list package --include-transitive` | Includes transitive |
-| **Rust** | `cargo tree` | |
-
-Example from Maven (shortened):
-
-```text
-[INFO] com.example:sca-demo:jar:1.0.0
-[INFO] +- org.apache.logging.log4j:log4j-core:jar:2.14.1:compile
-[INFO] |  \- org.apache.logging.log4j:log4j-api:jar:2.14.1:compile     <-- transitive
-[INFO] +- commons-collections:commons-collections:jar:3.2.1:compile
-[INFO] \- com.fasterxml.jackson.core:jackson-databind:jar:2.9.10:compile
-[INFO]    +- com.fasterxml.jackson.core:jackson-annotations:jar:2.9.0:compile   <-- transitive
-[INFO]    \- com.fasterxml.jackson.core:jackson-core:jar:2.9.10:compile        <-- transitive
-```
-
-You will do this in Lab 1.
-
-### Manifests and Lock Files
-
-| File Type | Purpose | Examples |
-| :--- | :--- | :--- |
-| **Manifest** | What you **ask for** (often version ranges) | `pom.xml`, `package.json`, `requirements.txt`, `go.mod`, `Cargo.toml` |
-| **Lock file** | The **exact versions** that were resolved, including transitive ones | `package-lock.json`, `yarn.lock`, `poetry.lock`, `Pipfile.lock`, `go.sum`, `Cargo.lock`, Gradle lockfiles |
-
-```text
- package.json:        "express": "^4.18.0"       (any 4.x version at or above 4.18.0)
-                                |
-                                v   (resolved once, then recorded)
- package-lock.json:   express 4.18.2, body-parser 1.20.1, qs 6.11.0, ... (exact versions)
-```
-
-**Why lock files matter for security:**
-
-| Without a Lock File | With a Lock File (and `npm ci` or equivalent) |
-| :--- | :--- |
-| Each build may resolve **different versions** | Every build installs **the same versions** |
-| A freshly published (possibly malicious) version can enter silently | Changes happen only through a **reviewed** commit |
-| Scans cannot know exactly what shipped | Scanners read the exact versions |
-
-**Commit your lock files**, and in CI use the strict install command that respects them:
-
-| Ecosystem | Strict, Reproducible Install |
-| :--- | :--- |
-| npm | `npm ci` |
-| Python | `pip install -r requirements.txt` with **pinned** versions, ideally `--require-hashes` |
-| Poetry | `poetry install` (uses `poetry.lock`) |
-| Maven | Pin versions explicitly, use `dependencyManagement` |
-| Go | `go build` verifies `go.sum` |
-
-### Package Identifiers: PURL and CPE
-
-To match a component to a vulnerability, tools need a **precise name**. Two identification systems are common:
-
-| Identifier | Format | Example |
-| :--- | :--- | :--- |
-| **PURL** (Package URL) | `pkg:<type>/<namespace>/<name>@<version>` | `pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1` |
-| **CPE** (Common Platform Enumeration) | `cpe:2.3:a:<vendor>:<product>:<version>:...` | `cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*` |
-
-```text
- pkg:pypi/flask@3.1.1                   a Python package
- pkg:npm/lodash@4.17.20                 a JavaScript package
- pkg:maven/com.google.guava/guava@32.0  a Java library
- pkg:deb/debian/openssl@3.0.11          an OS package
-```
-
-PURLs are precise and ecosystem-native, so tools that use them tend to produce **fewer false positives**. CPEs come from the NVD and can be ambiguous (the same product name can mean different things), which is a classic source of **false positives and false negatives** in tools that rely on them.
-
-### Controlling Your Dependencies
-
-| Practice | Why |
-| :--- | :--- |
-| **Fewer dependencies** | Every library is attack surface. Ask "do I really need this?" |
-| **Commit lock files; install strictly** | Reproducible, reviewable. |
-| **Review new dependencies** (maintainers, activity, downloads, license) | Avoid abandoned or suspicious packages. |
-| **Check names carefully** | Defeats typosquatting. |
-| **Use a private proxy or registry** (Artifactory, Nexus, cloud artifact registries) | One controlled entry point, allow-lists, caching. |
-| **Reserve or scope your internal names** (`@my-org/pkg`) | Defeats dependency confusion. |
-| **Pin versions and hashes where possible** | A changed package fails the install. |
-| **Wait before adopting brand-new releases** (a "cooldown") | Malicious releases are often detected and removed within days. |
-| **Remove unused dependencies** | Smaller attack surface. |
-
----
-
-## 3. Understanding CVE and CVSS
-
-### CVE: A Name for a Vulnerability
-
-A **CVE** (Common Vulnerabilities and Exposures) identifier is a unique public name for one specific vulnerability, so everyone talks about the **same** issue.
-
-```text
- CVE-2021-44228
-  |    |     |
-  |    |     +-- sequence number
-  |    +-------- year the ID was assigned
-  +------------- "CVE"
-```
+A **container** is a running program packaged together with everything it needs (libraries, runtime, configuration) so it behaves the same on any machine. A container is **not** a tiny virtual machine. It is an ordinary Linux process that the kernel **isolates** from other processes.
 
 | Term | Meaning |
 | :--- | :--- |
-| **CVE Program** | The system that assigns CVE IDs, run through MITRE and many CNAs |
-| **CNA** (CVE Numbering Authority) | An organization allowed to assign CVEs (vendors, researchers, projects) |
-| **NVD** (National Vulnerability Database) | The US government database that **enriches** CVEs with severity scores and affected-product data (CPEs) |
-| **GHSA** | A GitHub Security Advisory ID (`GHSA-xxxx-xxxx-xxxx`), used by the GitHub Advisory Database |
-| **OSV** | An open, ecosystem-focused vulnerability database and format |
-| **CWE** | A catalog of weakness **types** (CWE-502 is deserialization of untrusted data, CWE-79 is XSS) |
+| **Image** | A read-only template: the files and settings needed to run an application. |
+| **Container** | A **running instance** of an image. |
+| **Dockerfile** | A text recipe for building an image. |
+| **Registry** | A server that stores and distributes images (Docker Hub, GitHub Container Registry, and others). |
+| **Tag** | A human-friendly label for an image version, such as `python:3.12-slim`. Tags can **move**. |
+| **Digest** | A unique fingerprint of an image, such as `sha256:ab12...`. A digest **never changes**. |
 
-> [!NOTE]
-> Different tools use **different databases** (NVD, GitHub Advisories, OSV, vendor feeds). That is why two scanners can give **different results** for the same project. Neither is "wrong". Understand what your tool uses.
-
-### What a CVE Record Tells You
-
-| Field | What It Tells You |
-| :--- | :--- |
-| **Description** | What the flaw is and what an attacker can do |
-| **Affected versions** | Which versions are vulnerable |
-| **Fixed versions** | Where to upgrade |
-| **CWE** | The type of weakness |
-| **CVSS score and vector** | How severe it is, and why |
-| **References** | Advisories, patches, proof-of-concept articles |
-| **Known exploited?** | Whether it is on the CISA KEV list |
-
-### CVSS: Scoring Severity From 0 to 10
-
-The **Common Vulnerability Scoring System (CVSS)** gives each vulnerability a score from **0.0 to 10.0** describing its **technical severity**.
-
-| Score | Rating |
-| :---: | :--- |
-| 0.0 | None |
-| 0.1 to 3.9 | **Low** |
-| 4.0 to 6.9 | **Medium** |
-| 7.0 to 8.9 | **High** |
-| 9.0 to 10.0 | **Critical** |
-
-CVSS has versions. **v3.1** is still very common, and **v4.0** (released in late 2023) is being adopted. A record may show one or several. Always check **which version** a score uses.
-
-### The CVSS Vector: Why the Score Is What It Is
-
-The score comes from a **vector string** made of metrics. Here is Log4Shell:
+### Containers vs. Virtual Machines
 
 ```text
- CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H     =  10.0 (Critical)
+        VIRTUAL MACHINES                              CONTAINERS
+
+ +-------+ +-------+ +-------+              +-------+ +-------+ +-------+
+ | App A | | App B | | App C |              | App A | | App B | | App C |
+ | Libs  | | Libs  | | Libs  |              | Libs  | | Libs  | | Libs  |
+ | Guest | | Guest | | Guest |              +-------+ +-------+ +-------+
+ |  OS   | |  OS   | |  OS   |              +---------------------------+
+ +-------+ +-------+ +-------+              |   Container runtime       |
+ +---------------------------+              +---------------------------+
+ |        Hypervisor         |              |   ONE shared HOST KERNEL  |
+ +---------------------------+              +---------------------------+
+ |        Host hardware      |              |        Host hardware      |
+ +---------------------------+              +---------------------------+
 ```
-
-| Metric | Value | Meaning in Plain Words |
-| :--- | :---: | :--- |
-| **AV** Attack Vector | `N` Network | Exploitable **remotely over the network** (worst case) |
-| **AC** Attack Complexity | `L` Low | **Easy**: no special conditions |
-| **PR** Privileges Required | `N` None | The attacker needs **no account** |
-| **UI** User Interaction | `N` None | **No victim action** needed |
-| **S** Scope | `C` Changed | The impact can **spill beyond** the vulnerable component |
-| **C** Confidentiality | `H` High | Total loss of confidentiality |
-| **I** Integrity | `H` High | Total loss of integrity |
-| **A** Availability | `H` High | Total loss of availability |
-
-**Reading it the other way:** a flaw that needs **local access** (`AV:L`), **high privileges** (`PR:H`), and **user interaction** (`UI:R`) scores much lower, even if the impact is high.
-
-| Metric Group | What It Captures |
-| :--- | :--- |
-| **Base** | The vulnerability's intrinsic severity (what the NVD publishes) |
-| **Temporal / Threat** | Whether exploit code exists, whether a fix exists |
-| **Environmental** | How it affects **your** environment and assets |
-
-### CVSS Is Not Risk
 
 > [!IMPORTANT]
-> **CVSS measures how severe a flaw is in theory. It does not measure how likely you are to be attacked, or how much it matters in your environment.** A CVSS 9.8 flaw in code you never call, in an internal tool, may be less urgent than a CVSS 7.5 flaw in your internet-facing login service.
+> **All containers on a host share the host's kernel.** A virtual machine has its own kernel, so a flaw inside it is usually contained. If an attacker escapes a container, they land on the **host**, and from there they can reach **every other container**. This is why container isolation settings matter so much.
 
-Use CVSS **together with** these signals:
-
-| Signal | What It Is | How to Use It |
-| :--- | :--- | :--- |
-| **EPSS** (Exploit Prediction Scoring System) | A probability (0 to 100%) that a CVE will be **exploited in the next 30 days**, published by FIRST | A high EPSS means attackers are likely to use it soon. |
-| **CISA KEV** (Known Exploited Vulnerabilities catalog) | A list of CVEs **confirmed to be exploited in the wild** | If a vulnerability you have is on KEV, treat it as **urgent**, whatever its CVSS. |
-| **Fix available?** | Does a patched version exist? | Fixable issues are actionable now. |
-| **Exposure** | Is the component internet-facing or isolated? | Exposed components come first. |
-| **Reachability** | Does your code actually call the vulnerable function? | Unreachable issues are lower priority (but still plan to fix). |
-| **Data and business impact** | What would be lost? | Payment and identity systems rank higher. |
-
-### A Simple Prioritization Flow
-
-```text
-                     A vulnerability is reported
-                                |
-          On the CISA KEV list (known exploited)?
-              /                                \
-            YES                                 NO
-             |                                   |
-        Fix NOW                       High EPSS or CVSS >= 9?
-     (emergency)                      /                    \
-                                    YES                     NO
-                                     |                       |
-                          Internet-facing / reachable?   CVSS 7 to 8.9, fix available?
-                             /            \                  /              \
-                           YES            NO               YES               NO
-                            |              |                |                 |
-                       Fix in days     Fix this sprint   Fix this sprint   Track, mitigate,
-                                                                            re-check regularly
-```
-
-### Look Up a CVE Yourself
-
-- **NVD:** `https://nvd.nist.gov/vuln/detail/CVE-2021-44228`
-- **GitHub Advisory Database:** search the CVE ID at `github.com/advisories`
-- **CISA KEV catalog:** search the CVE ID to see whether it is known exploited
-- **EPSS:** look up the CVE on the FIRST EPSS site
-
-You will do this in Lab 2.
-
----
-
-## 4. Introduction to OWASP Dependency-Check
-
-### What Is Dependency-Check?
-
-**OWASP Dependency-Check** is a free, open-source SCA tool. It scans your project's files and libraries, identifies components, and reports the **known vulnerabilities** that affect them. It is one of the most widely used SCA tools, especially for **Java** and **.NET**, and also supports JavaScript, Python, Ruby, Go, and other ecosystems, some through **experimental** analyzers.
-
-### How It Works
-
-```text
- 1. COLLECT EVIDENCE     Look inside each file: JAR manifests, pom.xml data, package
-        |                names, file names, hashes, and metadata
-        v
- 2. IDENTIFY             Turn the evidence into identifiers:
-        |                  - a PURL  (pkg:maven/...)   precise
-        |                  - a CPE   (cpe:2.3:a:...)   matched against NVD data
-        v
- 3. MATCH                Compare identifiers with its local vulnerability database
-        |                (built from the NVD and other sources)
-        v
- 4. REPORT               HTML / JSON / XML / SARIF / CSV / JUnit ... with CVEs, scores,
-                         CWEs, and a confidence level for each identification
-```
-
-### Key Facts to Understand
-
-| Fact | Explanation |
-| :--- | :--- |
-| **It keeps a local copy of the vulnerability data** | The first run downloads a large database from the NVD, which can take a while. Later runs only fetch updates. |
-| **An NVD API key is strongly recommended** | The NVD rate-limits requests. Without a key, updates are very slow and may fail. The key is free. |
-| **It is evidence-based** | It guesses what a file is from clues. Good clues give strong matches. Poor clues give uncertain ones. |
-| **It reports a "confidence"** | How sure it is that the identification (and therefore the CVE match) is right. |
-| **False positives can happen** | Especially for CPE-based matches. You handle them with **suppressions**. |
-| **It works on files** | For Java it analyzes **JAR files**, so you usually need the **resolved dependencies**, not only the `pom.xml`. |
-
-> [!NOTE]
-> **Strengths:** free, mature, strong Java and .NET support, easy to run in CI, many report formats, built-in suppression and CVSS gating. **Limits:** CPE-based matching can be noisy, some ecosystems are experimental, and the initial database download is heavy. Many teams use **more than one** SCA tool and compare results.
-
-### Where Dependency-Check Can Run
-
-| Form | Command or Tool | Best For |
-| :--- | :--- | :--- |
-| **Command line** | `dependency-check.sh` or `dependency-check.bat` | Any language, local use |
-| **Docker image** | `owasp/dependency-check` | CI pipelines, labs |
-| **Maven plugin** | `org.owasp:dependency-check-maven` | Maven builds |
-| **Gradle plugin** | `org.owasp.dependencycheck` | Gradle builds |
-| **Jenkins plugin** | "OWASP Dependency-Check" | Jenkins jobs with trend charts |
-| **GitHub Action** | `dependency-check/Dependency-Check_Action` | GitHub workflows |
-
-### Other SCA Tools You May Meet
-
-| Tool | Notes |
-| :--- | :--- |
-| **Trivy** (`trivy fs`, `trivy image`, `trivy sbom`) | All-in-one scanner (Module 07). Uses ecosystem advisory data. |
-| **Grype** (pairs with Syft) | Vulnerability scanner for images, directories, and SBOMs. |
-| **OSV-Scanner** | Google's scanner using the OSV database. |
-| **`npm audit`**, **`pip-audit`**, `cargo audit`, `govulncheck` | Ecosystem-native auditing tools. `govulncheck` can even check **reachability**. |
-| **Dependabot** | Alerts and automatic update pull requests built into GitHub (section 9). |
-| **OWASP Dependency-Track** | A platform that **ingests SBOMs** and continuously monitors them for new vulnerabilities. |
-| **Snyk, Mend, Sonatype, FOSSA, Black Duck** | Commercial platforms with extra features (policy, reachability, license compliance). |
-
-> **Tip:** Because tools use different data sources and matching methods, run **two** on important projects and investigate the differences. A finding reported by both is usually solid.
-
----
-
-## 5. Scanning Dependencies with Dependency-Check
-
-### Step 1: Get a Free NVD API Key
-
-1. Open the NVD's **"Request an API Key"** page (`https://nvd.nist.gov/developers/request-an-api-key`).
-2. Enter your email and request the key. It is emailed to you (follow the activation link).
-3. **Treat it as a secret.** Store it in an environment variable, a password manager, or a CI secret. Never commit it.
-
-```bash
-read -rs NVD_API_KEY       # paste the key, press Enter (nothing is displayed)
-export NVD_API_KEY
-```
-
-### Step 2: Choose a Version and Install
-
-Pin a **specific** Dependency-Check version, never a moving tag. Check the project's releases page (`github.com/dependency-check/DependencyCheck/releases`) or the Docker Hub tag list, and set it as a variable.
-
-```bash
-export ODC_VERSION="<a verified release, for example the latest shown on the releases page>"
-```
-
-> [!WARNING]
-> **Supply chain reminder (Module 07):** security tools are part of your supply chain, and one was compromised earlier this year. Pin the version, prefer official sources, and **do not** pipe unreviewed install scripts into a shell.
-
-**Option A: Docker (recommended for labs and CI)**
-
-```bash
-docker pull owasp/dependency-check:${ODC_VERSION}
-```
-
-**Option B: Command-line download**
-
-Download the release `.zip` from the official releases page, verify its checksum or signature as the project describes, unzip it, and run `bin/dependency-check.sh`. This needs Java installed.
-
-### Step 3: Prepare Something to Scan
-
-Dependency-Check needs the **actual libraries**. For a Java project, copy the resolved dependencies into a folder. You will build the sample project in Lab 1, but the idea is:
-
-```bash
-# Resolve dependencies into ./libs using Maven in a container
-docker run --rm -v "$PWD":/app -w /app maven:3.9-eclipse-temurin-17 \
-  mvn -q dependency:copy-dependencies -DoutputDirectory=libs
-ls libs
-```
-
-### Step 4: Run the Scan
-
-```bash
-mkdir -p odc-data odc-reports
-
-docker run --rm \
-  -u "$(id -u):$(id -g)" \
-  --volume "$PWD:/src:z" \
-  --volume "$PWD/odc-data:/usr/share/dependency-check/data:z" \
-  --volume "$PWD/odc-reports:/report:z" \
-  owasp/dependency-check:${ODC_VERSION} \
-    --scan /src/libs \
-    --project "sca-demo" \
-    --format ALL \
-    --out /report \
-    --nvdApiKey "$NVD_API_KEY"
-```
-
-| Part | Meaning |
-| :--- | :--- |
-| `-u "$(id -u):$(id -g)"` | Runs as **you**, so the report and data files are owned by you. |
-| `/src` mount | Your project (read by the scanner). |
-| `/usr/share/dependency-check/data` mount | **The vulnerability database cache.** Keep it between runs, so you do not re-download everything each time. |
-| `/report` mount | Where reports are written. |
-| `--scan /src/libs` | What to scan (can be repeated). |
-| `--project` | A name for the report. |
-| `--format ALL` | HTML, JSON, XML, CSV, JUnit, SARIF, and more. |
-| `--nvdApiKey` | Your API key (reads faster and avoids rate-limit failures). |
-
-> [!NOTE]
-> **The first run is slow.** It downloads the entire vulnerability database, which can take a long time (and longer without an API key). Be patient, and **keep the `odc-data` folder** so later runs are much faster. Passing a key on the command line makes it visible to other users on a shared machine through the process list. Use a dedicated machine or the tool's configuration options for sensitive environments.
-
-### Important Command-Line Options
-
-| Option | Purpose |
-| :--- | :--- |
-| `--scan <path>` | A file or folder to scan. Repeat for several. |
-| `--project <name>` | The project name shown in reports. |
-| `--format <fmt>` / `-f` | `HTML`, `JSON`, `XML`, `CSV`, `JUNIT`, `SARIF`, `JENKINS`, `GITLAB`, or `ALL`. Repeat for several. |
-| `--out <dir>` / `-o` | Output folder for reports. |
-| `--failOnCVSS <score>` | **Exit with an error** if any vulnerability has a CVSS score at or above this value (**the gate**). The default never fails. |
-| `--suppression <file>` | An XML file listing findings to suppress. |
-| `--nvdApiKey <key>` | The NVD API key. |
-| `--enableExperimental` | Turn on experimental analyzers (several non-Java ecosystems). |
-| `--exclude <pattern>` | Skip matching files (Ant-style patterns). |
-| `--data <dir>` | Where the vulnerability database is stored. |
-| `--noupdate` | Do not update the database (offline or pre-populated runs). |
-| `--prettyPrint` | Make JSON and XML reports human-readable. |
-| `--disableAssembly`, `--disableNodeAudit`, and similar | Switch off specific analyzers you do not need. |
-
-### Reading the HTML Report
-
-Open `odc-reports/dependency-check-report.html` in a browser.
-
-**1. The summary**
-
-| Item | Meaning |
-| :--- | :--- |
-| **Dependencies scanned** | How many files were examined. |
-| **Vulnerable dependencies** | How many have at least one known vulnerability. |
-| **Vulnerabilities found** | Total CVEs across them. |
-| **Vulnerabilities suppressed** | Findings you explicitly suppressed. |
-
-**2. The dependency table**
-
-| Column | Meaning |
-| :--- | :--- |
-| **Dependency** | The file or component analyzed. |
-| **Vulnerability IDs** | The CVEs found. |
-| **Package** | The identified package (PURL) if one was determined. |
-| **Highest Severity** | The worst severity of its CVEs. |
-| **CVE Count** | How many CVEs match. |
-| **Confidence** | How sure Dependency-Check is about the identification. |
-| **Evidence Count** | How many clues supported it. |
-
-**3. The detail for each dependency** shows its file path, hashes, the **evidence** used, the identified package, and a list of each CVE with its **CVSS score**, **CWE**, description, and a **suppress** button that generates the XML for a suppression.
-
-### Understanding Confidence
-
-| Confidence | Meaning | What To Do |
-| :--- | :--- | :--- |
-| **Highest / High** | Strong evidence (for example, an exact Maven coordinate match) | Findings are very likely real. |
-| **Medium** | Reasonable evidence | Verify before acting. |
-| **Low** | Weak clues (for example, only a file name) | **Check carefully.** This is where false positives live. |
-
-### Reading the JSON Report
-
-The JSON report is best for scripts and gates. Simplified:
-
-```json
-{
-  "scanInfo": { "engineVersion": "..." },
-  "projectInfo": { "name": "sca-demo" },
-  "dependencies": [
-    {
-      "fileName": "log4j-core-2.14.1.jar",
-      "filePath": "/src/libs/log4j-core-2.14.1.jar",
-      "sha1": "...",
-      "packages": [ { "id": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1", "confidence": "HIGHEST" } ],
-      "vulnerabilities": [
-        {
-          "name": "CVE-2021-44228",
-          "severity": "CRITICAL",
-          "cvssv3": { "baseScore": 10.0, "baseSeverity": "CRITICAL" },
-          "cwes": [ "CWE-502" ],
-          "description": "..."
-        }
-      ]
-    }
-  ]
-}
-```
-
-Handy `jq` recipes:
-
-```bash
-R=odc-reports/dependency-check-report.json
-
-# Which dependencies are vulnerable, and with which CVEs?
-jq -r '.dependencies[] | select(.vulnerabilities) |
-       "\(.fileName): \([.vulnerabilities[].name] | join(", "))"' $R
-
-# Count findings by severity
-jq -r '[.dependencies[].vulnerabilities[]?] | group_by(.severity)
-       | map("\(.[0].severity): \(length)") | .[]' $R
-
-# List CRITICAL and HIGH findings with their CVSS score
-jq -r '.dependencies[] | .fileName as $f | .vulnerabilities[]?
-       | select(.severity=="CRITICAL" or .severity=="HIGH")
-       | "\(.severity)  \(.name)  \(.cvssv3.baseScore // "n/a")  \($f)"' $R | sort
-```
-
-### Use It as a Gate
-
-```bash
-docker run --rm -u "$(id -u):$(id -g)" \
-  -v "$PWD:/src:z" -v "$PWD/odc-data:/usr/share/dependency-check/data:z" -v "$PWD/odc-reports:/report:z" \
-  owasp/dependency-check:${ODC_VERSION} \
-  --scan /src/libs --format JSON --out /report --nvdApiKey "$NVD_API_KEY" --failOnCVSS 7
-
-echo "Dependency-Check exit code: $?"      # non-zero = at least one finding with CVSS 7.0 or higher
-```
-
-With `--failOnCVSS 7`, any finding rated **High or Critical** makes the command **fail**, which fails the pipeline. (A non-zero exit can also mean the scan itself failed, for example because the database update did not work. Read the log.)
-
-### Handling False Positives: Suppression Files
-
-When you have **verified** that a finding does not apply, record that decision in a **suppression file** instead of ignoring it silently.
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
-
-  <!-- Suppress ONE CVE for ONE package, with a reason and an expiry date -->
-  <suppress until="2026-12-31Z">
-    <notes><![CDATA[
-      CVE-2023-XXXXX affects only the optional XML parser module, which we do not use.
-      Verified by: A. Student. Ticket: SEC-231. Review before the expiry date.
-    ]]></notes>
-    <packageUrl regex="true">^pkg:maven/org\.example/example-lib@1\.2\..*$</packageUrl>
-    <cve>CVE-2023-XXXXX</cve>
-  </suppress>
-
-</suppressions>
-```
-
-Use it:
-
-```bash
-... --suppression /src/suppressions.xml
-```
-
-| Good Suppression Practice | Why |
-| :--- | :--- |
-| **Narrow:** one CVE and one package | A broad suppression can hide real problems. |
-| **Reason in `<notes>`** with a ticket or approver | Future readers know why. |
-| **An `until` date** | Forces a re-review. |
-| **Reviewed like code** (CODEOWNERS) | A suppression file is a way to bypass the gate. |
-| **Verify first** | Do not suppress because a report is "noisy". |
-
-### What Dependency-Check Does Not Do Well
-
-- It does not know whether the vulnerable code is **reachable**.
-- Non-Java ecosystems often rely on **experimental** analyzers. Compare with an ecosystem-native tool.
-- CPE-based matching can **over-report** (false positives) or **under-report** when the NVD data lacks product information.
-- It cannot find **malicious** packages that have no CVE.
-
----
-
-## 6. Introduction to SBOM
-
-### What Is an SBOM?
-
-A **Software Bill of Materials (SBOM)** is a **formal, machine-readable inventory** of the components in a piece of software: their names, versions, suppliers, identifiers, licenses, and how they relate to one another.
-
-> **Analogy:** The **nutrition and ingredients label** on food. It does not say the food is safe or healthy. It tells you **exactly what is inside**, so that when someone announces "this ingredient is recalled", you can check in seconds.
-
-```text
- Ingredients label                         Software Bill of Materials
-
- Wheat flour ........ 60%                  log4j-core ............ 2.14.1   Apache-2.0
- Sugar ............... 20%                  jackson-databind ...... 2.9.10   Apache-2.0
- Palm oil ............ 10%                  commons-collections ... 3.2.1    Apache-2.0
- ...                                        ... (hundreds more, with supplier,
-                                                  identifiers, and relationships)
-```
-
-### Why Organizations Need SBOMs
+### Why Container Security Matters
 
 | Reason | Explanation |
 | :--- | :--- |
-| **Incident response** | "Are we affected by the new critical CVE?" becomes a **search**, not an investigation (the Log4Shell lesson). |
-| **Continuous monitoring** | Re-scan stored SBOMs every day against new vulnerabilities, **without rebuilding** anything. |
-| **Supply chain transparency** | Customers and partners can see what is inside what you deliver. |
-| **License compliance** | Know every license obligation. |
-| **Compliance and procurement** | Governments and large buyers increasingly require SBOMs (for example, US Executive Order 14028 and its follow-ups, and the EU Cyber Resilience Act). Check current rules for your sector. |
-| **Quality and hygiene** | Reveals outdated, unmaintained, and duplicate components. |
-| **Reproducibility and audit** | A record of what shipped in each release. |
+| **Images are code you did not write** | A typical image contains hundreds of OS packages and libraries from other people. |
+| **Speed multiplies mistakes** | One bad base image can be copied into hundreds of deployments within hours. |
+| **Defaults favor convenience** | Containers run as `root` by default, and many images ship with shells, compilers, and package managers an attacker can use. |
+| **Shared kernel** | A breakout affects the whole host. |
+| **Supply chain exposure** | Images are pulled from the internet, and anyone can publish one. |
 
-### What an SBOM Contains
-
-The US NTIA published **minimum elements** that an SBOM should contain. They are widely used as a baseline:
-
-| Element | Meaning | Example |
-| :--- | :--- | :--- |
-| **Supplier name** | Who provides the component | `Apache Software Foundation` |
-| **Component name** | The component's name | `log4j-core` |
-| **Version** | The exact version | `2.14.1` |
-| **Other unique identifiers** | PURL, CPE, hashes | `pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1` |
-| **Dependency relationship** | What depends on what | `log4j-core` depends on `log4j-api` |
-| **Author of the SBOM data** | Who or what produced the SBOM | `syft 1.x` |
-| **Timestamp** | When it was produced | `2026-10-28T10:00:00Z` |
-
-Most SBOMs also include **licenses** and **hashes**.
-
-### What an SBOM Is Not
-
-| An SBOM is... | An SBOM is not... |
-| :--- | :--- |
-| An **inventory** | A **vulnerability report** (you combine it with a vulnerability database to get one) |
-| A snapshot at a point in time | Automatically up to date |
-| Only as accurate as the tool that generated it | A guarantee that nothing is missing |
-| **Evidence of what you ship** | Proof that what you ship is **safe** |
-
-### Types of SBOM (By When It Is Made)
-
-| Type | Generated From | Pros and Cons |
-| :--- | :--- | :--- |
-| **Source SBOM** | Source and manifests (`pom.xml`, lock files) | Early and fast, but may miss what the build actually pulls in |
-| **Build SBOM** | During the build (build tool knows the resolved dependencies) | Accurate for that build |
-| **Analyzed SBOM** | Scanning the **final artifact** (JAR, container image) | Shows **what really ships**, including OS packages in images |
-| **Deployed / runtime SBOM** | A running system | What is actually running |
-
-> **Rule of thumb:** generate the SBOM from **the artifact you ship** (the built image or package), because that is what attackers will meet.
-
-### The SBOM Lifecycle
+### The Container Lifecycle and Where Security Fits
 
 ```text
- GENERATE (at build)  -->  STORE (with the artifact)  -->  SIGN / ATTEST (Module 07, Cosign)
-        |                                                          |
-        |                                                          v
-        |                                                SHARE (customers, auditors)
-        v
- MONITOR continuously: re-scan stored SBOMs against new vulnerabilities
-        |
-        v
- ALERT and FIX (rebuild with patched components, publish a new SBOM)
+   BUILD                  SHIP                    DEPLOY                 RUN
++---------+          +-----------+          +---------------+      +-------------+
+| Write   |  build   | Push to   |  pull    | Orchestrator  | start| Container   |
+| Docker- | -------> | registry  | -------> | (Docker,      |----->| running on  |
+| file    |          |           |          |  Kubernetes)  |      | a host      |
++---------+          +-----------+          +---------------+      +-------------+
+    |                     |                        |                     |
+ Secure the           Scan, sign,              Verify signature,     Least privilege,
+ Dockerfile and       SBOM, protect            enforce policy        resource limits,
+ base image           the registry                                   monitoring
 ```
 
-**OWASP Dependency-Track** is a popular open-source platform for exactly this: you upload SBOMs, and it **continuously monitors** them against vulnerability sources, tracks policy violations, and notifies you.
+This module follows that path: **secure the build** (sections 4 and 5), **scan** (6 to 10), **sign and verify** (11 to 13), **automate** (14), and **protect at runtime** (15).
 
-### SBOM and VEX
+### The Container Attack Surface
 
-An SBOM lists components. A **VEX** (Vulnerability Exploitability eXchange) document states, for a given product, whether a particular CVE **actually affects it**. Together they let a supplier say: *"Yes, our product contains Log4j (SBOM), but it is **not affected** by this CVE because the vulnerable feature is never used (VEX)."* This cuts false alarms for customers.
-
----
-
-## 7. SBOM Formats: SPDX vs. CycloneDX
-
-Two open standards dominate. Both can describe components, versions, licenses, hashes, and relationships, and most tools can read and write both.
-
-### At a Glance
-
-| | **SPDX** | **CycloneDX** |
-| :--- | :--- | :--- |
-| **Full name** | Software Package Data Exchange | CycloneDX (often "CDX") |
-| **Maintained by** | The Linux Foundation | OWASP (the CycloneDX project) |
-| **Origin and focus** | Started for **license compliance**, now also security | Started for **security and supply chain** use cases |
-| **Standardization** | ISO/IEC 5962:2021 (SPDX 2.x) | Standardized as ECMA-424 |
-| **Formats** | JSON, YAML, XML, RDF, tag-value | JSON, XML (and Protocol Buffers) |
-| **Current versions** | SPDX 2.3 widely used. SPDX 3.0 is newer and more expressive. | 1.5 and 1.6 widely used, with newer revisions appearing |
-| **Strengths** | Rich licensing data, mature in legal and compliance contexts, very detailed relationships | Lightweight, security-oriented, supports **VEX, services, and other BOM types** natively |
-| **Typical tools** | Syft, Trivy, GitHub (export), many compliance tools | Syft, Trivy, Dependency-Track, Cosign attestation type `cyclonedx` |
-
-> **Which should I choose?** Often **both**. Many organizations produce **CycloneDX** for security tooling (such as Dependency-Track) and **SPDX** when customers or regulators ask for it. Follow your customers' and regulators' requirements, and make sure your tools support your choice.
-
-### The Same Component in Both Formats
-
-**CycloneDX (JSON), simplified:**
-
-```json
-{
-  "bomFormat": "CycloneDX",
-  "specVersion": "1.6",
-  "serialNumber": "urn:uuid:3e671687-395b-41f5-a30f-a58921a69b79",
-  "version": 1,
-  "metadata": {
-    "timestamp": "2026-10-28T10:00:00Z",
-    "tools": { "components": [ { "type": "application", "name": "syft", "version": "1.x" } ] },
-    "component": { "type": "application", "name": "sca-demo", "version": "1.0.0" }
-  },
-  "components": [
-    {
-      "type": "library",
-      "bom-ref": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
-      "group": "org.apache.logging.log4j",
-      "name": "log4j-core",
-      "version": "2.14.1",
-      "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
-      "licenses": [ { "license": { "id": "Apache-2.0" } } ]
-    }
-  ],
-  "dependencies": [
-    {
-      "ref": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
-      "dependsOn": [ "pkg:maven/org.apache.logging.log4j/log4j-api@2.14.1" ]
-    }
-  ]
-}
-```
-
-**SPDX (JSON), simplified:**
-
-```json
-{
-  "spdxVersion": "SPDX-2.3",
-  "dataLicense": "CC0-1.0",
-  "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "sca-demo",
-  "documentNamespace": "https://example.com/spdx/sca-demo-3e671687",
-  "creationInfo": {
-    "created": "2026-10-28T10:00:00Z",
-    "creators": [ "Tool: syft-1.x" ]
-  },
-  "packages": [
-    {
-      "SPDXID": "SPDXRef-Package-log4j-core",
-      "name": "log4j-core",
-      "versionInfo": "2.14.1",
-      "supplier": "Organization: Apache Software Foundation",
-      "downloadLocation": "NOASSERTION",
-      "licenseConcluded": "Apache-2.0",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"
-        }
-      ]
-    }
-  ],
-  "relationships": [
-    { "spdxElementId": "SPDXRef-DOCUMENT", "relationshipType": "DESCRIBES", "relatedSpdxElement": "SPDXRef-Package-log4j-core" }
-  ]
-}
-```
-
-### Reading the Key Fields
-
-| Idea | CycloneDX Field | SPDX Field |
-| :--- | :--- | :--- |
-| Format and version | `bomFormat`, `specVersion` | `spdxVersion` |
-| Component name and version | `components[].name`, `.version` | `packages[].name`, `.versionInfo` |
-| Package identifier | `components[].purl` | `packages[].externalRefs` (type `purl`) |
-| License | `components[].licenses` | `licenseConcluded`, `licenseDeclared` |
-| Who created the SBOM and when | `metadata.tools`, `metadata.timestamp` | `creationInfo.creators`, `.created` |
-| Dependency relationships | `dependencies[]` (`ref` and `dependsOn`) | `relationships[]` |
-| Unique document ID | `serialNumber` | `documentNamespace` |
-
-### SBOM Quality Matters
-
-Not all SBOMs are equally useful. Check:
-
-| Quality Check | Why |
+| Layer | What Can Go Wrong |
 | :--- | :--- |
-| **Complete?** Are transitive dependencies and OS packages present? | Missing components mean missing vulnerabilities. |
-| **Accurate versions?** | A wrong version gives wrong scan results. |
-| **Has PURLs or CPEs?** | Without identifiers, matching is guesswork. |
-| **Has relationships?** | Needed to understand which parent pulls in which child. |
-| **Valid format?** | Use validators (CycloneDX CLI, SPDX tools) in CI. |
-| **Fresh?** | Generated at build time for **that** release. |
-
-### Converting Between Formats
-
-Tools such as Syft (`syft convert`) and the CycloneDX CLI can convert between formats, but conversion can **lose detail** because the formats are not identical. Prefer **generating both formats directly** from the source.
-
-### Other GitHub Features
-
-GitHub can export an SBOM of your repository's dependency graph in **SPDX JSON**:
-
-- **UI:** repository **Insights → Dependency graph → Export SBOM**.
-- **API:** `gh api repos/OWNER/REPO/dependency-graph/sbom`.
-
-This reflects **declared** dependencies. For the final image or package, generate an SBOM from the artifact itself.
+| **Application and its dependencies** | Vulnerable libraries and insecure code (Modules 04 and 05) |
+| **Image contents** | Vulnerable OS packages, unnecessary tools, embedded secrets, malware |
+| **Dockerfile and build process** | Running as root, leaked secrets, unpinned or untrusted base images |
+| **Registry** | Stolen credentials, overwritten tags, malicious or typosquatted images |
+| **Container runtime and Docker daemon** | Exposed daemon API, runtime vulnerabilities (for example, `runc` flaws) |
+| **Container configuration** | `--privileged`, mounted Docker socket, excessive capabilities, no resource limits |
+| **Host operating system** | Unpatched kernel, weak host configuration (Module 02) |
+| **Network** | Open ports, flat networks where every container can reach every other |
+| **CI/CD pipeline and tools** | Compromised actions, stolen registry or signing credentials (Module 03) |
 
 ---
 
-## 8. Generating an SBOM with Syft
+## 2. Docker Security Architecture
 
-### What Is Syft?
+### How Docker Is Built
 
-**Syft** is a free, open-source tool from Anchore that generates SBOMs from **container images, directories, archives, and more**. It pairs with **Grype**, a vulnerability scanner, and its output works with Trivy, Dependency-Track, and others.
+```text
+ You type:  docker run nginx
+      |
+      v
++---------------+    REST API     +---------------------+
+| Docker CLI    | --------------> | Docker daemon       |   (dockerd: runs as ROOT)
+| (client)      |  (unix socket)  | images, networks,   |
++---------------+                 | volumes, build      |
+                                  +----------+----------+
+                                             |
+                                             v
+                                  +---------------------+
+                                  | containerd          |   manages container lifecycle
+                                  +----------+----------+
+                                             |
+                                             v
+                                  +---------------------+
+                                  | runc                |   creates the isolated process
+                                  +----------+----------+
+                                             |
+                                             v
+                                  +---------------------+
+                                  | LINUX KERNEL        |   namespaces, cgroups, capabilities,
+                                  +---------------------+   seccomp, AppArmor / SELinux
+```
 
-### Installing Syft Safely
+> [!WARNING]
+> **The Docker daemon runs as root, and anyone who can talk to it is effectively root on the host.** Being a member of the `docker` group, or having access to `/var/run/docker.sock`, is equivalent to having `sudo` without a password. Treat both as highly privileged.
 
-Follow the same rules as for Trivy and Dependency-Check: **pinned, verified** versions, from the official source.
+### The Linux Features Behind Containers (Module 02 Revisited)
+
+A container is a **normal process wrapped in several kernel isolation features**:
+
+| Feature | What It Does | Analogy |
+| :--- | :--- | :--- |
+| **Namespaces** | Give the process its **own view** of the system: its own process list (PID), network, filesystem mounts, hostname, and users | A separate apartment with its own front door and address |
+| **cgroups** (control groups) | **Limit** how much CPU, memory, and processes a container may use | A power and water meter with a limit |
+| **Capabilities** | Split root's powers into pieces. Containers start with a **reduced** set | A key ring holding only some keys |
+| **seccomp** | Filters which **system calls** a process may make. Docker's default profile blocks dozens of risky calls | A bouncer checking what each request asks for |
+| **AppArmor / SELinux** | Mandatory access control: restricts files and actions even for root | A building policy that overrides the tenant |
+| **Union filesystem** | Stacks read-only image layers with a thin writable layer on top | Transparent sheets stacked on one another |
+
+The main namespaces:
+
+| Namespace | Isolates |
+| :--- | :--- |
+| `pid` | Process IDs (the container sees itself as PID 1) |
+| `net` | Network interfaces, ports, and routing |
+| `mnt` | Filesystem mount points |
+| `uts` | Hostname |
+| `ipc` | Shared memory and messaging |
+| `user` | User and group IDs (root in the container can map to an unprivileged user on the host) |
+| `cgroup` | The cgroup view |
+
+### Docker's Default Capabilities
+
+By default Docker gives containers a **reduced set of about 14 capabilities**, such as `CHOWN`, `SETUID`, `SETGID`, `NET_BIND_SERVICE`, `KILL`, and `NET_RAW`. Most applications need almost none of these.
 
 ```bash
-SYFT_VERSION="<a verified release from github.com/anchore/syft/releases, without the leading v>"
-BASE="https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}"
-FILE="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+# Good practice: drop everything, add back only what you need
+docker run --cap-drop ALL --cap-add NET_BIND_SERVICE nginx
+```
 
+### Rootless Docker and User Namespaces
+
+| Option | What It Does | Benefit |
+| :--- | :--- | :--- |
+| **Rootless mode** | Runs the Docker daemon and containers **without root** on the host | A breakout lands as an unprivileged user |
+| **User namespace remapping** | Maps container root (UID 0) to a high, unprivileged host UID | "Root" in the container is **not** root on the host |
+| **Non-root `USER` in the image** | The application never runs as UID 0 in the first place | Simplest and most widely effective |
+
+### Images, Layers, and Registries
+
+**Images are made of layers.** Each Dockerfile instruction that changes files (`RUN`, `COPY`, `ADD`) creates a **read-only layer**. Layers are stacked, and the container adds a thin writable layer on top.
+
+```text
+Dockerfile                          Image layers (read-only)
+
+FROM python:3.12-slim      -->     [ Layer 1-4: base OS + Python ]
+RUN pip install flask      -->     [ Layer 5: installed packages ]
+COPY app.py /app/          -->     [ Layer 6: your code          ]
+                                   [ Writable container layer    ]   <-- only exists at runtime
+```
+
+**Why layers matter for security:**
+
+| Fact | Security Consequence |
+| :--- | :--- |
+| Layers are **permanent history** | A secret added in one layer and "deleted" in a later layer **remains in the earlier layer**. This is the same lesson as Git history in Module 03. |
+| Anyone with the image can run `docker history` | `ENV` and `ARG` values and commands are visible. |
+| Layers are shared and cached | A vulnerable base layer is reused everywhere it appears. |
+| More tools in a layer means more attack surface | Compilers and shells help attackers as much as developers. |
+
+```bash
+docker history --no-trunc <image>        # every instruction that built the image
+docker inspect <image>                   # environment variables, user, ports, entrypoint
+```
+
+**Registries** store images by name and tag:
+
+```text
+ghcr.io / my-org / my-app : 1.4.2          @sha256:3f1c...e9
+ \_____/   \_____/ \____/   \____/          \___________/
+ registry  owner   repo      tag              digest (immutable fingerprint)
+```
+
+| Registry | Notes |
+| :--- | :--- |
+| **Docker Hub** | Default public registry. Contains official, verified-publisher, and **community** images (not all trustworthy). Has pull rate limits. |
+| **GitHub Container Registry (GHCR)** | `ghcr.io`, integrates with GitHub Actions and permissions. |
+| **Cloud registries** | Amazon ECR, Azure ACR, Google Artifact Registry. |
+| **Self-hosted** | Harbor (includes scanning and signing support), or the simple `registry:2` image used in the labs. |
+
+### Tags vs. Digests: A Crucial Difference
+
+| | **Tag** (`myapp:1.0`) | **Digest** (`myapp@sha256:3f1c...`) |
+| :--- | :--- | :--- |
+| **Can change?** | **Yes.** Anyone with push access can point the tag at different content. | **No.** It is a cryptographic fingerprint of the exact content. |
+| **Safe for deployment pinning?** | ⚠️ No | ✅ Yes |
+| **Easy to read?** | ✅ Yes | ❌ No |
+
+> **Rule:** use tags to **find** an image, but use **digests** to **identify** it for scanning, signing, and deployment.
+
+---
+
+## 3. Common Container Security Risks
+
+### Risk Overview
+
+| # | Risk | Example | Impact | Main Control |
+| :---: | :--- | :--- | :--- | :--- |
+| 1 | **Vulnerable base image or packages** | `python:3.8` (end of life) with hundreds of known CVEs | Attackers exploit known flaws | Scanning, updated minimal base images |
+| 2 | **Running as root** | No `USER` instruction in the Dockerfile | A compromised app has full power inside the container | Non-root `USER` |
+| 3 | **Embedded secrets** | `ENV API_KEY=...` or a copied `.env` file | Anyone with the image gets the secret | Build secrets, `.dockerignore`, runtime injection |
+| 4 | **Bloated images** | Shells, compilers, `curl`, package managers left in | Easier post-exploitation | Multi-stage builds, minimal or distroless bases |
+| 5 | **Untrusted images** | Pulling `random-user/cool-tool` from Docker Hub | Malware, cryptominers, backdoors | Official or verified sources, scanning, signature verification |
+| 6 | **Mutable tags** | Deploying `myapp:latest` | You cannot tell what is running; tag can be silently replaced | Digest pinning, immutable tags |
+| 7 | **Privileged containers** | `docker run --privileged` | Almost no isolation from the host | Never use it; add only needed capabilities |
+| 8 | **Mounted Docker socket** | `-v /var/run/docker.sock:/var/run/docker.sock` | The container can control the host's Docker, which means **root on the host** | Avoid; use safer build methods |
+| 9 | **Host mounts and namespaces** | `-v /:/host`, `--pid=host`, `--network=host` | Container reads or changes the host | Mount only what is needed, read-only |
+| 10 | **Exposed Docker API** | Daemon listening on TCP 2375 without TLS | Anyone on the network can start containers on the host (commonly abused for cryptomining) | Never expose it; use the local socket, SSH, or mutual TLS |
+| 11 | **No resource limits** | One container uses all memory or processes | Denial of service for the whole host | `--memory`, `--cpus`, `--pids-limit` |
+| 12 | **Flat networks** | Every container can talk to every other | Easy lateral movement | User-defined networks, network policies |
+| 13 | **Outdated container runtime** | Unpatched Docker, `containerd`, or `runc` | Container breakout (for example, the 2024 `runc` flaw CVE-2024-21626) | Keep the runtime and host patched |
+| 14 | **Compromised pipeline or registry credentials** | Stolen CI token pushes a malicious image | Malicious code reaches production | Short-lived credentials, signing, verification |
+| 15 | **Compromised security tooling** | A poisoned scanner or CI action | Credential theft from your pipeline | Pin and verify tools (see the case study in section 7) |
+
+### Why `--privileged` and the Docker Socket Are So Dangerous
+
+```text
+ Normal container                          Privileged container, or one with the Docker socket
+
+ +---------------------+                   +---------------------+
+ |  App (limited)      |                   |  App (almost host)  |
+ +---------------------+                   +---------------------+
+  isolated by namespaces,                   most protections OFF,
+  capabilities, seccomp                     or can ask the host's Docker
+                                            to start ANY container,
+         |                                  including one that mounts "/"
+         v                                          |
+   Host is protected                                v
+                                              Host is exposed
+```
+
+You will see a safe demonstration in Lab 1.
+
+### Real-World Patterns
+
+| Pattern | What Happened in Practice |
+| :--- | :--- |
+| **Cryptojacking** | Attackers find exposed Docker APIs or vulnerable containers and run cryptocurrency miners. |
+| **Malicious public images** | Images on public registries have contained miners and credential stealers disguised as useful tools. |
+| **Leaked secrets in images** | Cloud keys and tokens published inside public images are found and abused by scanners. |
+| **Container breakouts** | Runtime flaws let a process escape to the host when the runtime is unpatched. |
+| **Poisoned build tools** | Pipeline tools and actions were compromised, stealing the secrets of everyone who ran them. |
+
+---
+
+## 4. Writing Secure Dockerfiles
+
+### A Dockerfile With Problems
+
+Here is a typical beginner Dockerfile. Count the problems before reading the list.
+
+```dockerfile
+FROM python:3.8                          # (1)
+ENV API_KEY=not-a-real-key-demo-123      # (2)
+WORKDIR /app
+COPY . .                                 # (3)
+RUN pip install -r requirements.txt      # (4)
+EXPOSE 5000
+CMD ["python", "app.py"]                 # (5)
+```
+
+| # | Problem | Why It Is a Risk |
+| :---: | :--- | :--- |
+| 1 | **Old, large, unpinned base image** (`python:3.8` is end of life) | Hundreds of unpatched OS and Python vulnerabilities. The tag also moves. |
+| 2 | **Secret in `ENV`** | Visible in `docker history`, `docker inspect`, and every container's environment. |
+| 3 | **`COPY . .` copies everything** | Includes `.git`, `.env`, private keys, test data, and notes. |
+| 4 | **Unpinned or cache-heavy installs, no `--no-cache-dir`** | Unpredictable versions and leftover cache. |
+| 5 | **No `USER`, so it runs as root** | A compromise gives root inside the container. |
+| 6 | (Not shown) **No `HEALTHCHECK`**, no `.dockerignore`, no multi-stage build | Less visibility, bigger image, more tools in the final image. |
+
+### The Hardened Version
+
+```dockerfile
+# syntax=docker/dockerfile:1
+
+############ Stage 1: build (tools and caches stay HERE) ############
+FROM python:3.12-slim AS builder
+WORKDIR /build
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+COPY requirements.txt .
+RUN python -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.txt
+
+############ Stage 2: runtime (only what is needed to RUN) ############
+FROM python:3.12-slim
+
+# A dedicated, unprivileged user with a fixed numeric ID
+RUN groupadd --gid 10001 app \
+ && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin app
+
+WORKDIR /app
+COPY --from=builder /opt/venv /opt/venv
+COPY --chown=app:app app.py .
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+USER 10001:10001
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+```
+
+### Rule-by-Rule Explanation
+
+| Practice | Instruction | Why |
+| :--- | :--- | :--- |
+| **Small, current base image** | `FROM python:3.12-slim` | Fewer packages means fewer vulnerabilities and less for attackers to use. |
+| **Pin the base image** | `FROM python:3.12-slim@sha256:<digest>` | Guarantees you get exactly the image you tested. Let Dependabot or Renovate propose digest updates. |
+| **Multi-stage build** | `FROM ... AS builder`, then `COPY --from=builder` | Compilers, caches, and build tools never reach the final image. |
+| **Non-root user** | `USER 10001:10001` | Limits damage if the application is compromised. Use a **numeric** ID so Kubernetes can verify it is non-root (Module 08). |
+| **Copy only what you need** | `COPY app.py .` plus a `.dockerignore` | Prevents accidental inclusion of secrets and junk. |
+| **Set file ownership while copying** | `COPY --chown=app:app` | Avoids a separate `chown` layer. |
+| **No secrets in `ENV` or `ARG`** | Use BuildKit secrets or runtime injection | Values in `ENV`, `ARG`, and `RUN` commands are recorded in image history. |
+| **Pin dependencies** | `requirements.txt` with exact versions, lock files | Reproducible, reviewable builds. |
+| **No cache files** | `PIP_NO_CACHE_DIR=1`, `--no-install-recommends`, delete apt lists | Smaller image and fewer files. |
+| **Exec form for commands** | `CMD ["gunicorn", ...]` | The application receives signals correctly and no shell is involved. |
+| **Health check** | `HEALTHCHECK` | Lets orchestrators detect a broken container. |
+| **Production server** | `gunicorn`, not the Flask development server | The dev server is not designed for hostile traffic. |
+
+### Install OS Packages Safely
+
+```dockerfile
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+```
+
+One `RUN` keeps the update and install in the **same layer**, `--no-install-recommends` avoids extras, and the last command removes the package index. Install only what the **running** application truly needs.
+
+### Handling Secrets During a Build
+
+Sometimes a build really needs a credential, for example to download a private package. Use **BuildKit secrets**, which are available to one `RUN` step and **never stored in a layer**.
+
+```dockerfile
+# syntax=docker/dockerfile:1
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN --mount=type=secret,id=pip_conf,target=/etc/pip.conf \
+    pip install --no-cache-dir -r requirements.txt
+```
+
+```bash
+docker build --secret id=pip_conf,src=./pip.conf -t myapp:1.0 .
+```
+
+| Method | Safe? | Why |
+| :--- | :---: | :--- |
+| `ENV TOKEN=...` | ❌ | Permanent in image metadata |
+| `ARG TOKEN=...` with `--build-arg` | ❌ | Recorded in image history |
+| `COPY .env .` then `RUN rm .env` | ❌ | The file still exists in the earlier layer |
+| `RUN --mount=type=secret ...` | ✅ | Exists only during that step |
+| Injecting the secret at **runtime** (mounted file or secrets manager) | ✅ | Never in the image at all |
+
+### The `.dockerignore` File
+
+It stops files from being sent to the build and copied by accident.
+
+```text
+# .dockerignore
+.git
+.gitignore
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+node_modules
+__pycache__
+*.pyc
+tests/
+docs/
+Dockerfile
+docker-compose*.yml
+*.md
+```
+
+### `COPY` vs. `ADD`
+
+| Instruction | Behavior | Guidance |
+| :--- | :--- | :--- |
+| `COPY` | Copies files from the build context | ✅ Use this by default |
+| `ADD` | Also fetches **URLs** and auto-extracts archives | ⚠️ Avoid. Downloads without verification are risky. |
+
+If you must download something, use `RUN curl` and **verify a checksum or signature** before using it.
+
+### Lint Your Dockerfile
+
+**Hadolint** is a Dockerfile linter that catches common problems:
+
+```bash
+docker run --rm -i hadolint/hadolint < Dockerfile
+```
+
+Typical messages: *DL3002* (last `USER` should not be root), *DL3006* (tag the image version), *DL3008* and *DL3013* (pin package versions), *DL3025* (use JSON form for `CMD`). **Trivy** can also scan Dockerfiles for misconfigurations (`trivy config .`, section 8).
+
+### Language Examples: Minimal Final Images
+
+**Go** (static binary, no OS needed):
+
+```dockerfile
+FROM golang:1.23 AS build
+WORKDIR /src
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/app .
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/app /app
+USER 65532:65532
+ENTRYPOINT ["/app"]
+```
+
+**Node.js** (distroless runtime):
+
+```dockerfile
+FROM node:22-slim AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY . .
+
+FROM gcr.io/distroless/nodejs22-debian12:nonroot
+WORKDIR /app
+COPY --from=build /app /app
+CMD ["server.js"]
+```
+
+> [!NOTE]
+> Image names and version tags change. Check the project documentation (for example, the distroless repository) for the current names before using them.
+
+---
+
+## 5. Container Image Security Best Practices
+
+### Choose a Good Base Image
+
+The base image is the **largest part of your attack surface**. Pick the smallest one that works.
+
+| Base Image Type | Examples | Size | Pros | Cons |
+| :--- | :--- | :---: | :--- | :--- |
+| **Full OS** | `ubuntu`, `debian`, `python:3.12` | Large | Familiar, many tools | Hundreds of packages, many CVEs |
+| **Slim** | `python:3.12-slim`, `node:22-slim` | Medium | Fewer packages, still easy to use | Some tools missing |
+| **Alpine** | `alpine`, `python:3.12-alpine` | Small | Tiny, minimal packages | Uses `musl` instead of `glibc`, which can break some software |
+| **Distroless** | `gcr.io/distroless/*` | Very small | **No shell and no package manager**. Only your app and its runtime. | Harder to debug (no shell) |
+| **Scratch** | `FROM scratch` | Tiny | Nothing but your static binary | Only for static binaries |
+| **Hardened minimal images** | Commercial and community "hardened" image catalogs | Small | Built for low CVE counts and fast patching | Check licensing and update policy |
+
+```text
+Typical vulnerability counts (illustrative only):
+
+ python:3.12        ##########################  many OS packages, many findings
+ python:3.12-slim   ########                    fewer
+ distroless         ##                          very few
+```
+
+### Where Your Images Come From
+
+| Source | Trust Level | Advice |
+| :--- | :--- | :--- |
+| **Docker Official Images** | High (maintained, scanned) | Preferred starting point |
+| **Verified Publisher** images | Good | Acceptable for well-known vendors |
+| **Your organization's own base images** | High (you control them) | Best for consistency: build once, harden, scan, sign, then reuse |
+| **Random community images** | Low | Avoid, or inspect and rebuild from source |
+| **Typosquatted names** (`pythom`, `ngnix`) | Hostile | Double-check spellings and publishers |
+
+### Tagging and Pinning Strategy
+
+| Practice | Why |
+| :--- | :--- |
+| **Never deploy `:latest`** | You cannot tell what it is, and it changes without notice. |
+| **Use specific version tags** (`1.4.2`) plus the **git commit SHA** (`1.4.2-3f9a1c2`) | Traceable and reproducible. |
+| **Pin base images by digest** in the Dockerfile | Builds do not change underneath you. |
+| **Deploy by digest** (`myapp@sha256:...`) | What you scanned and signed is exactly what runs. |
+| **Use immutable tags** in your registry if supported | Prevents overwriting a released tag. |
+
+Find a digest:
+
+```bash
+docker buildx imagetools inspect python:3.12-slim      # shows the digest
+docker inspect --format '{{index .RepoDigests 0}}' python:3.12-slim
+```
+
+### Keep Images Fresh
+
+New vulnerabilities are discovered **every day**, even in code that has not changed. An image that was clean last month may not be clean today.
+
+- **Rebuild regularly** (for example, nightly or weekly) to pick up patched base images.
+- Use `docker build --pull --no-cache` when you need to force fresh layers.
+- Let **Dependabot** or **Renovate** propose base image updates (Module 03, section 4.8: the `docker` ecosystem).
+- **Rescan** images that are already deployed and in the registry, not only at build time.
+
+### Remove What You Do Not Need
+
+| Remove | Why |
+| :--- | :--- |
+| **Shells and debug tools** (in the final image) | Attackers use them after a compromise. |
+| **Compilers and build tools** | Use multi-stage builds. |
+| **Package manager caches** | Smaller and cleaner. |
+| **Test files, documentation, `.git`** | Not needed to run. |
+| **SUID and SGID binaries** that are unnecessary | Privilege escalation paths (Module 02). |
+
+### Registry Security
+
+| Practice | Why |
+| :--- | :--- |
+| **Use private repositories** for internal images | Stops outsiders from pulling your images and studying them. |
+| **Least-privilege tokens** (read-only for deployers, write only for CI) | Limits the damage of a leaked credential. |
+| **Short-lived credentials** (OIDC, temporary tokens) | Nothing long-lived to steal. |
+| **Never store registry passwords in code** | See Module 03. |
+| **Enable scan-on-push** if your registry supports it | Findings appear as soon as an image arrives. |
+| **Enforce immutable tags and retention policies** | Prevents overwriting and keeps history. |
+| **Log and review pushes** | You can see who published what and when. |
+| **Protect `~/.docker/config.json`** | It can contain registry credentials. Use credential helpers and `docker login --password-stdin`. |
+
+```bash
+# Safer login: the password is not placed on the command line or in shell history
+echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+```
+
+### Image Security Checklist
+
+- [ ] Base image is minimal, current, and from a trusted source
+- [ ] Base image is pinned by digest (or by exact version at minimum)
+- [ ] Multi-stage build keeps tools out of the final image
+- [ ] Runs as a **non-root numeric user**
+- [ ] No secrets in `ENV`, `ARG`, `COPY`, or layers
+- [ ] `.dockerignore` exists and excludes secrets and junk
+- [ ] Dependencies are pinned
+- [ ] Image is **scanned** and meets the vulnerability policy
+- [ ] An **SBOM** is generated and stored
+- [ ] Image is **signed**, and the signature is **verified** before deployment
+- [ ] Deployed **by digest**
+
+---
+
+## 6. Introduction to Trivy
+
+### What Is Trivy?
+
+**Trivy** is a free, open-source security scanner from Aqua Security. One tool and one command scan many kinds of targets for several kinds of problems, which is why it is so widely used in pipelines.
+
+### What Trivy Can Scan
+
+| Target | Command | Typical Use |
+| :--- | :--- | :--- |
+| **Container image** | `trivy image <image>` | Find vulnerable OS packages and libraries inside images |
+| **Image saved as a tar file** | `trivy image --input image.tar` | Scan without needing a Docker daemon or socket |
+| **Local folder or project** | `trivy fs .` | Scan source dependencies and lock files |
+| **Git repository** | `trivy repo <url>` | Scan a remote repo |
+| **Infrastructure as Code and Dockerfiles** | `trivy config .` | Find misconfigurations (Dockerfile, Terraform, Kubernetes manifests) |
+| **SBOM file** | `trivy sbom <file>` | Scan an existing software bill of materials |
+| **Kubernetes cluster** | `trivy k8s ...` | Cluster and workload scanning (Module 08) |
+
+### What Trivy Can Find (Scanners)
+
+| Scanner | Finds | Flag |
+| :--- | :--- | :--- |
+| **Vulnerabilities** | Known CVEs in OS packages and language libraries | `--scanners vuln` |
+| **Secrets** | Passwords, API keys, tokens, private keys in files | `--scanners secret` |
+| **Misconfigurations** | Insecure settings in Dockerfiles, Terraform, Kubernetes YAML | `--scanners misconfig` |
+| **Licenses** | Open-source licenses of included software | `--scanners license` |
+
+For `trivy image`, the default scanners are **vulnerabilities and secrets**.
+
+### How Trivy Scans an Image
+
+```text
+ 1. GET THE IMAGE        from a registry, the local Docker daemon, or a .tar file
+         |
+         v
+ 2. UNPACK LAYERS        read every layer's files
+         |
+         v
+ 3. IDENTIFY SOFTWARE
+         |-- OS and version      (/etc/os-release)
+         |-- OS packages         (dpkg, apk, rpm databases)
+         '-- Language packages   (package-lock.json, requirements.txt, METADATA, go binaries ...)
+         |
+         v
+ 4. MATCH AGAINST THE VULNERABILITY DATABASE  (downloaded and cached locally)
+         |      sources: Debian, Ubuntu, Alpine, Red Hat advisories, GitHub Advisory
+         |      Database, NVD, language ecosystem databases ...
+         v
+ 5. REPORT               table, JSON, SARIF, SBOM ... and an exit code for pipelines
+```
+
+> [!NOTE]
+> This is the same idea as the SCA tools of Module 05: **identify components, then look them up in a database of known vulnerabilities**. Trivy simply does it for the whole image, including the operating system.
+
+### Trivy vs. Other Tools
+
+| Tool | Notes |
+| :--- | :--- |
+| **Trivy** | All-in-one: vulnerabilities, secrets, misconfigurations, SBOM, licenses. Very popular in CI. |
+| **Grype** (with **Syft**) | Grype scans for vulnerabilities, Syft generates SBOMs. A fine pairing. |
+| **Docker Scout** | Docker's own analysis, integrated with Docker Desktop and Docker Hub. |
+| **Clair** | Registry-oriented scanner used by some registries. |
+| **Snyk, Prisma, and other commercial tools** | Add dashboards, policy management, and support. |
+
+> **No scanner is perfect.** Different tools use different data and can report different numbers. Pick one, understand its output, and use it consistently.
+
+---
+
+## 7. Installing Trivy
+
+### ⚠️ Case Study: When the Scanner Becomes the Target
+
+> [!WARNING]
+> **In March 2026, Trivy itself was the victim of a supply chain attack.** This is a real-world lesson that belongs in every DevSecOps course.
+>
+> **What happened (summary of the public advisories):**
+> - On **19 March 2026**, attackers used stolen credentials to publish a **malicious Trivy release (v0.69.4)** and to **overwrite 75 of 76 version tags of the `aquasecurity/trivy-action` GitHub Action** (plus the tags of `aquasecurity/setup-trivy`), pointing them at malicious code.
+> - Later malicious Docker image tags (`0.69.5` and `0.69.6`) were also published.
+> - The malicious code **stole secrets** from CI runners (cloud keys, tokens, SSH keys, registry credentials) and then ran the **real scan**, so builds looked completely normal.
+> - Pipelines using a **moving tag** such as `trivy-action@0.28.0` silently ran attacker code, **even though nobody changed their workflow file**.
+>
+> **Lessons:**
+>
+> | Lesson | What To Do |
+> | :--- | :--- |
+> | **Tags can be moved** | Pin GitHub Actions to a **full commit SHA**, never a tag (Module 03, section 12). |
+> | **"Latest" is a risk** | Pin tool **versions** (binary, Docker image tag or digest). Never auto-install `latest`. |
+> | **Security tools are high-value targets** | They run with access to your secrets. Treat them like any other third-party dependency. |
+> | **Verify what you download** | Check **checksums** and **signatures** (Cosign) of releases. |
+> | **Limit what a CI job can steal** | Least-privilege tokens, short-lived credentials, no long-lived cloud keys in CI (OIDC). |
+> | **Have a response plan** | If a compromised version might have run, **rotate every secret** that job could access. |
+>
+> The affected versions were **v0.69.4** (binary, with image tags `0.69.4` to `0.69.6`) and unpinned references to the actions. Aqua's advisory listed **v0.69.3** and earlier as safe at the time, and later releases were published after the incident. Always read the **current official advisory** and install a release you have **verified**.
+
+You can read the primary sources in the references (section 19). Keep this story in mind in every pipeline you build: **the same supply chain thinking you apply to your application applies to your security tools.**
+
+### Choose an Installation Method
+
+| Method | Best For | Notes |
+| :--- | :--- | :--- |
+| **Download a release and verify it** | CI servers, careful installs | ✅ Recommended. Pin the version, verify the checksum and signature. |
+| **Docker image (pinned tag)** | Quick use, isolated CI jobs | Pin an exact tag (or digest). Never `latest`. |
+| **Package manager** (`apt`, `brew`) | Laptops | Convenient. Check the version you get. |
+| **`curl ... \| sh` install scripts** | — | ❌ Avoid. You execute unreviewed code. |
+
+Choose a version from the **official releases page** and set it as a variable. In this module the examples use `0.71.0` only as an **example**. Use the newest release you have verified.
+
+### Option 1: Download, Verify, and Install (Linux)
+
+```bash
+TRIVY_VERSION=0.71.0           # example only: use a current release you have verified
+BASE="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+FILE="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+
+# 1. Download the release and its checksum list
 curl -sSfL -O "${BASE}/${FILE}"
-curl -sSfL -O "${BASE}/syft_${SYFT_VERSION}_checksums.txt"
-sha256sum --check --ignore-missing "syft_${SYFT_VERSION}_checksums.txt"      # must say OK
+curl -sSfL -O "${BASE}/trivy_${TRIVY_VERSION}_checksums.txt"
 
-sudo tar -xzf "${FILE}" -C /usr/local/bin syft
-syft version
+# 2. Verify the checksum (must print: "OK")
+sha256sum --check --ignore-missing "trivy_${TRIVY_VERSION}_checksums.txt"
+
+# 3. Install
+sudo tar -xzf "${FILE}" -C /usr/local/bin trivy
+
+# 4. Confirm
+trivy --version
 ```
 
-Other options: `brew install syft`, or the Docker image `anchore/syft:<pinned-version>`. Avoid `curl ... | sh` installers. (File names can change between releases, so confirm them on the releases page.)
+On ARM machines, replace `Linux-64bit` with `Linux-ARM64`. On other systems use the matching file from the releases page.
 
-### What Syft Can Scan
+> [!TIP]
+> **A checksum from the same page as the download only protects against corruption**, not against a compromised release. For stronger assurance, also verify the **signature** below.
 
-| Source | Syntax | Example |
-| :--- | :--- | :--- |
-| **A directory** | `dir:<path>` | `syft dir:./libs` |
-| **A container image** (local daemon) | `docker:<image>` | `syft docker:myapp:1.0` |
-| **An image from a registry** | `registry:<image>` | `syft registry:ghcr.io/org/app:1.0` |
-| **An image archive** | `docker-archive:<tar>` or `oci-archive:<tar>` | `syft docker-archive:image.tar` |
-| **A single file** | `file:<path>` | `syft file:app.jar` |
+### Verify the Signature With Cosign (Stronger)
 
-If you give just a name (`syft myapp:1.0`), Syft tries to work out the source type.
-
-### Generate an SBOM
+Since Trivy v0.68.1, each release asset has a signature bundle (`.sigstore.json`). With Cosign v3:
 
 ```bash
-# Human-readable table on screen
-syft dir:./libs
+curl -sSfL -O "${BASE}/${FILE}.sigstore.json"
 
-# CycloneDX JSON file
-syft dir:./libs -o cyclonedx-json=sbom.cdx.json
-
-# SPDX JSON file
-syft dir:./libs -o spdx-json=sbom.spdx.json
-
-# Several formats in one run
-syft dir:./libs \
-  -o cyclonedx-json=sbom.cdx.json \
-  -o spdx-json=sbom.spdx.json \
-  -o syft-json=sbom.syft.json
+cosign verify-blob "${FILE}" \
+  --bundle "${FILE}.sigstore.json" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v${TRIVY_VERSION}"
 ```
 
-| Output Format | Name | Use |
-| :--- | :--- | :--- |
-| Table | `table` | Quick look in the terminal |
-| CycloneDX | `cyclonedx-json`, `cyclonedx-xml` | Security tooling, Dependency-Track |
-| SPDX | `spdx-json`, `spdx-tag-value` | Compliance, customers, regulators |
-| Syft native | `syft-json` | Richest detail, can be converted to other formats |
-| GitHub | `github-json` | GitHub dependency submission |
+`Verified OK` means the file was produced by the official Trivy release workflow for that tag. (With Cosign v2.4 or newer, add `--new-bundle-format`. Check Trivy's "signature verification" documentation for the current command.) You will learn how Cosign works in sections 11 to 13.
 
-### Scan the Artifact You Ship
+### Option 2: Docker Image
 
 ```bash
-# Maven project: scanning only the pom.xml may miss transitive libraries.
-# Better: resolve the dependencies (or build the JAR/image) and scan THAT.
-syft dir:./libs -o cyclonedx-json=sbom.cdx.json
+TRIVY_VERSION=0.71.0           # example only: use a verified release
 
-# A container image: includes OS packages AND application libraries
-syft docker:myapp:1.0 -o cyclonedx-json=sbom-image.cdx.json
+docker run --rm \
+  -v trivy-cache:/root/.cache/ \
+  -v "$PWD:/work" \
+  aquasec/trivy:${TRIVY_VERSION} image --input /work/myimage.tar
 ```
 
-> **Why this matters:** an SBOM made from a `pom.xml` lists what you **declared**. An SBOM made from the built artifact lists what you **shipped**. The second is what attackers will meet.
-
-### Useful Options
-
-| Option | Purpose |
+| Part | Why |
 | :--- | :--- |
-| `-o <format>=<file>` | Choose output format and file. Repeatable. |
-| `--scope all-layers` | For images, include components from **all layers** (default is the final, squashed result). |
-| `--exclude "./tests/**"` | Skip paths (repeatable). |
-| `--source-name`, `--source-version` | Label the main component in the SBOM (name and version of your product). |
-| `-c .syft.yaml` | Use a configuration file for repeatable settings. |
-| `-q` / `-v` | Quiet or verbose output. |
+| `aquasec/trivy:${TRIVY_VERSION}` | **Pinned tag.** For stronger protection, pin the image **digest**. |
+| `-v trivy-cache:/root/.cache/` | Keeps the vulnerability database between runs (otherwise it downloads every time). |
+| `--input /work/myimage.tar` | Scans an image you exported with `docker save`. **No Docker socket needed.** |
 
-Giving the SBOM a meaningful **name and version** helps everyone who reads it later:
+> [!CAUTION]
+> Many tutorials mount the Docker socket into the Trivy container (`-v /var/run/docker.sock:...`) so it can read local images. As you learned in section 3, that gives the container **control of the host's Docker**. Prefer `docker save` plus `--input`, or scan an image from a registry.
+
+### Option 3: Package Managers (Laptops)
 
 ```bash
-syft dir:./libs --source-name sca-demo --source-version 1.0.0 -o cyclonedx-json=sbom.cdx.json
+brew install trivy             # macOS and Linux with Homebrew
 ```
+
+For Debian and Ubuntu, Trivy documents an APT repository on its website. Follow the **official installation page** for the exact, current steps, and verify the repository's signing key as instructed.
+
+### The Vulnerability Database
+
+Trivy downloads a **vulnerability database** the first time you scan, and refreshes it automatically. It is cached (by default under `~/.cache/trivy`).
+
+```bash
+trivy image --download-db-only                  # download or update the database now
+trivy image --skip-db-update myapp:1.0          # use the cached database only (offline or faster runs)
+```
+
+If the download fails with `TOOMANYREQUESTS`, the default registry has rate-limited you. You can point Trivy at a mirror with `--db-repository` (see the official documentation for current mirror addresses) or cache the database in CI.
+
+### Verify Your Installation
+
+```bash
+trivy --version
+trivy image --help | head -20
+trivy image python:3.12-slim          # first scan: downloads the database, then scans a public image
+```
+
+---
+
+## 8. Scanning Container Images with Trivy
+
+### Your First Scan
+
+```bash
+trivy image python:3.8
+```
+
+You will see a header (OS detected, database date) and then a table of findings:
+
+```text
+python:3.8 (debian 12.x)
+========================
+Total: 600 (UNKNOWN: 0, LOW: 300, MEDIUM: 200, HIGH: 80, CRITICAL: 20)    <- numbers are illustrative
+
+┌───────────┬────────────────┬──────────┬──────────┬───────────────────┬───────────────┬─────────────────────┐
+│  Library  │ Vulnerability  │ Severity │  Status  │ Installed Version │ Fixed Version │        Title        │
+├───────────┼────────────────┼──────────┼──────────┼───────────────────┼───────────────┼─────────────────────┤
+│ libssl3   │ CVE-XXXX-NNNN  │ CRITICAL │ fixed    │ 3.0.11-1          │ 3.0.13-1      │ openssl: ...        │
+│ zlib1g    │ CVE-XXXX-NNNN  │ HIGH     │ affected │ 1:1.2.13          │               │ zlib: ...           │
+└───────────┴────────────────┴──────────┴──────────┴───────────────────┴───────────────┴─────────────────────┘
+```
+
+Section 9 explains every column.
+
+### Scan Your Own Local Image
+
+```bash
+docker build -t myapp:1.0 .
+
+# Option A: Trivy reads the image from your local Docker daemon
+trivy image myapp:1.0
+
+# Option B: scan an exported tar file (no daemon access needed)
+docker save myapp:1.0 -o myapp.tar
+trivy image --input myapp.tar
+```
+
+### Filter the Output
+
+| Goal | Option | Example |
+| :--- | :--- | :--- |
+| Show only important severities | `--severity` | `--severity HIGH,CRITICAL` |
+| Hide vulnerabilities with **no available fix** | `--ignore-unfixed` | `--ignore-unfixed` |
+| Choose what to scan for | `--scanners` | `--scanners vuln,secret,misconfig` |
+| Only OS or only library packages | `--pkg-types` | `--pkg-types os` or `--pkg-types library` |
+| Skip files or folders | `--skip-dirs`, `--skip-files` | `--skip-dirs /usr/share/doc` |
+
+```bash
+# A realistic day-to-day command
+trivy image --severity HIGH,CRITICAL --ignore-unfixed myapp:1.0
+```
+
+### Output Formats and Reports
+
+```bash
+# JSON (best for scripts and gates)
+trivy image --format json --output trivy-report.json myapp:1.0
+
+# SARIF (for code scanning dashboards that accept it)
+trivy image --format sarif --output trivy-report.sarif myapp:1.0
+
+# Table saved to a file
+trivy image --output trivy-report.txt myapp:1.0
+```
+
+| Format | `--format` value | Use |
+| :--- | :--- | :--- |
+| Table | `table` (default) | Reading in a terminal |
+| JSON | `json` | Scripting, dashboards, gates |
+| SARIF | `sarif` | GitHub code scanning and other tools |
+| CycloneDX SBOM | `cyclonedx` | Software bill of materials |
+| SPDX SBOM | `spdx`, `spdx-json` | Software bill of materials |
+| Template | `template` | Custom reports (such as HTML) |
+
+### Use Trivy as a Pipeline Gate
+
+By default Trivy exits with `0` even when it finds vulnerabilities. Use `--exit-code` to make findings **fail the build**:
+
+```bash
+trivy image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed myapp:1.0
+echo "Trivy exit code: $?"
+```
+
+| Exit Code | Meaning |
+| :---: | :--- |
+| `0` | Nothing at or above the chosen severities (or no `--exit-code`). The gate **passes**. |
+| `1` | Findings at the selected severities exist. The gate **fails**. |
+
+A common policy: **fail on CRITICAL and HIGH vulnerabilities that already have a fix**. Fixable issues are actionable, which keeps the gate fair.
+
+### Scan for Secrets in an Image
+
+```bash
+trivy image --scanners secret myapp:1.0
+```
+
+Trivy looks for API keys, tokens, and private keys inside image files. If `COPY . .` accidentally copied a `.env` file, this finds it (Lab 3).
+
+### Scan a Dockerfile and Other Config for Mistakes
+
+```bash
+trivy config .
+```
+
+Typical findings for a Dockerfile include **"Image user should not be 'root'"** (a missing `USER`) and **"No HEALTHCHECK defined"**. This scans the **recipe**, while `trivy image` scans the **result**. Use both.
+
+### Scan the Project Folder (Before the Image Exists)
+
+```bash
+trivy fs --scanners vuln,secret,misconfig .
+```
+
+This checks dependency files such as `requirements.txt`, lock files, and configuration in your source folder, so problems are caught **before** you build.
+
+### Scan Private Registries
+
+```bash
+# Trivy uses the credentials from your 'docker login', or these variables:
+export TRIVY_USERNAME="$REGISTRY_USER"
+export TRIVY_PASSWORD="$REGISTRY_TOKEN"
+trivy image ghcr.io/my-org/myapp:1.0
+```
+
+Keep tokens in CI **secrets**, never in the command or the repository (Module 03).
+
+### Generate an SBOM for an Image
+
+An **SBOM** (Software Bill of Materials) lists everything inside the image, so you can answer questions like *"Which of our images contain this vulnerable library?"* in seconds. (SBOM formats, **CycloneDX** and **SPDX**, are covered in Module 05.)
+
+**With Trivy:**
+
+```bash
+trivy image --format cyclonedx --output sbom.cdx.json myapp:1.0
+trivy image --format spdx-json  --output sbom.spdx.json myapp:1.0
+```
+
+**With Syft (an alternative SBOM generator):**
+
+```bash
+syft myapp:1.0 -o cyclonedx-json=sbom.syft.cdx.json
+syft myapp:1.0 -o spdx-json=sbom.syft.spdx.json
+```
+
+Install Syft the same careful way as Trivy (pinned version, verified download). See its official page.
 
 ### Inspect an SBOM
 
 ```bash
-# Count components
+# How many components?
 jq '.components | length' sbom.cdx.json
 
-# List names, versions, and PURLs
-jq -r '.components[] | "\(.name)  \(.version)  \(.purl)"' sbom.cdx.json | sort
+# List package names and versions
+jq -r '.components[] | "\(.name)  \(.version)"' sbom.cdx.json | sort | head -30
 
-# Show licenses
-jq -r '.components[] | "\(.name): \([.licenses[]?.license.id // .licenses[]?.license.name] | join(", "))"' sbom.cdx.json
-
-# Search for one component
-jq -r '.components[] | select(.name | test("log4j")) | "\(.name) \(.version)"' sbom.cdx.json
-
-# Dependency relationships
-jq '.dependencies' sbom.cdx.json | head -40
+# Is a particular package in the image?
+jq -r '.components[] | select(.name=="flask") | "\(.name) \(.version)"' sbom.cdx.json
 ```
-
-### Answer "Where Is Log4j?" Across Many SBOMs
-
-If you store the SBOM of every build in one folder, the next Log4Shell is a one-liner:
-
-```bash
-# Which of our stored SBOMs contain log4j-core, and which version?
-for f in sboms/*.cdx.json; do
-  jq -r --arg f "$f" '.components[]? | select(.name=="log4j-core") | "\($f)  \(.version)"' "$f"
-done
-```
-
-This is the whole point of SBOMs: **fast, evidence-based answers**. Platforms such as **Dependency-Track** do this at scale.
 
 ### Scan an SBOM for Vulnerabilities
 
-An SBOM is an inventory. To find vulnerabilities, scan it with a tool that reads SBOMs:
-
 ```bash
-# Grype (Anchore's scanner, pairs with Syft)
-grype sbom:./sbom.cdx.json
-
-# Trivy (Module 07)
-trivy sbom sbom.cdx.json --severity HIGH,CRITICAL
+trivy sbom sbom.cdx.json
 ```
 
-Benefits: you can **rescan old SBOMs later** against new vulnerability data **without access to the original code or image**.
+This scans the **inventory** instead of the image. It is useful when you store SBOMs and want to **rescan them later against newer vulnerability data**, without the image itself.
 
-### Sign the SBOM (Preview of Module 07)
+### Handling Accepted Risks: `.trivyignore`
 
-An SBOM should be trustworthy. Attach it to the image as a **signed attestation**:
+A `.trivyignore` file lists vulnerabilities to **skip**. Use it sparingly, with **comments** and **expiry dates**:
 
-```bash
-cosign attest --yes --type cyclonedx --predicate sbom.cdx.json <image@sha256:digest>
+```text
+# .trivyignore
+# CVE-2024-XXXXX: not exploitable here, the vulnerable function is not called.
+# Approved in SEC-231. Review before expiry.
+CVE-2024-XXXXX exp:2026-12-31
 ```
 
-Consumers can then verify that the SBOM was produced by your pipeline (Module 07, sections 12 and 13).
+> [!WARNING]
+> A `.trivyignore` file is a **security control**. Anyone who can edit it can silence the gate. Protect it with **CODEOWNERS** and review its changes carefully, exactly like the rules file in Module 06.
+
+### Speed Tips for CI
+
+| Tip | Why |
+| :--- | :--- |
+| Cache the Trivy database between runs | Avoids a large download every time. |
+| Scan **before** pushing to the registry | Bad images never leave the build. |
+| Use `--ignore-unfixed` and `--severity` | Smaller, faster, more actionable reports. |
+| Scan the **final** image, not intermediate stages | That is what you ship. |
 
 ---
 
-## 9. Understanding Dependabot
+## 9. Understanding Vulnerability Reports
 
-### What Is Dependabot?
+### A Quick Refresher: CVE and CVSS
 
-**Dependabot** is GitHub's built-in dependency monitoring service. It watches your dependency files and does three jobs:
+| Term | Meaning |
+| :--- | :--- |
+| **CVE** | A public ID for a specific vulnerability, such as `CVE-2024-12345`. |
+| **CVSS score** | A 0 to 10 score of technical severity. |
+| **CWE** | The **type** of weakness (for example, CWE-79 is XSS). |
+| **EPSS** | A probability estimate that a CVE will be **exploited** soon. |
+| **CISA KEV** | A list of vulnerabilities **known to be exploited** in the wild. |
 
-| Part | What It Does | Triggered By | Needs a Config File? |
-| :--- | :--- | :--- | :---: |
-| **Dependabot alerts** | **Warns** you when a dependency has a known vulnerability | The GitHub Advisory Database | No |
-| **Dependabot security updates** | Automatically opens a **pull request** that upgrades a vulnerable dependency to a safe version | A new alert | No |
-| **Dependabot version updates** | Opens regular pull requests to keep **all** dependencies current, even when not vulnerable | A schedule you set | **Yes** (`dependabot.yml`) |
+(Module 05 covered CVE and CVSS in depth.)
+
+### Reading the Trivy Table
+
+| Column | Meaning | What To Do With It |
+| :--- | :--- | :--- |
+| **Library** | The affected package (`openssl`, `flask`, `zlib1g`) | Tells you what to update. |
+| **Vulnerability** | The CVE ID | Search it for details and exploit status. |
+| **Severity** | `UNKNOWN`, `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` | Start prioritizing here. |
+| **Status** | The fix state (see below) | Tells you whether a fix exists. |
+| **Installed Version** | The version inside **your** image | Compare with the fixed version. |
+| **Fixed Version** | The version that contains the fix (blank if none) | Your update target. |
+| **Title** and link | Short description and reference | Read before deciding. |
+
+### Understanding "Status"
+
+| Status | Meaning | Typical Action |
+| :--- | :--- | :--- |
+| `fixed` | A patched version **exists** | **Update.** This is your easiest win. |
+| `affected` | The package is vulnerable and **no fix is available yet** | Mitigate, monitor, consider another base image. |
+| `will_not_fix` | The distribution has decided **not** to patch it | Accept with justification, or change base image. |
+| `fix_deferred` | A fix is planned later | Track it and revisit. |
+| `end_of_life` | The component or OS no longer receives updates | **Upgrade** to a supported version. |
+
+### Severity Levels
+
+| Severity | CVSS Range (approximate) | Typical Response |
+| :--- | :--- | :--- |
+| **CRITICAL** | 9.0 to 10.0 | Fix immediately, block release |
+| **HIGH** | 7.0 to 8.9 | Fix urgently, block release for fixable issues |
+| **MEDIUM** | 4.0 to 6.9 | Fix in normal maintenance |
+| **LOW** | 0.1 to 3.9 | Fix opportunistically |
+| **UNKNOWN** | Not rated | Investigate |
+
+### Severity Is Not the Whole Story: Prioritize Wisely
+
+A scanner may report **hundreds** of findings. You cannot, and do not need to, fix them all at once. Ask these questions:
 
 ```text
- Advisory published  -->  Dependabot ALERT  -->  Security UPDATE pull request  -->  You review, test, merge
- (GitHub Advisory DB)     (Security tab)         (automatic, safe version)
+ For each finding, ask:
 
- Schedule (weekly)   -->  Version UPDATE pull requests  -->  You review, test, merge
- (dependabot.yml)         (keeps you current)
+ 1. Is a FIX AVAILABLE?            -> fixable issues come first
+ 2. Is it EXPLOITED in the wild?   -> on the CISA KEV list, or high EPSS? Move it up
+ 3. Is the component REACHABLE?    -> is the vulnerable code or package actually used?
+ 4. Is the container EXPOSED?      -> internet-facing, or isolated internal service?
+ 5. What DATA or ACCESS is at risk?-> a payment service outranks a demo page
+ 6. Can we REMOVE the component?   -> best fix of all: it is gone
 ```
+
+> **Example:** A CRITICAL vulnerability in a `curl` binary that your running application never uses, in an image that is not internet-facing, is less urgent than a HIGH vulnerability in the web framework serving public traffic. Both need attention, but the order should follow **risk**, not just the label.
+
+### Where Do Most Findings Come From?
+
+In a typical image, the **OS packages from the base image** produce the **majority** of the findings, while your own libraries produce fewer, more actionable ones.
+
+```text
+ Findings by origin (typical pattern):
+
+ Base image OS packages   ####################   most findings; fixed by changing/updating the base
+ Language libraries       #####                  fixed by updating your dependencies
+ Your own code            #                      found by SAST (Module 04), not by image scanning
+```
+
+That is why a better base image is often the **single biggest improvement**.
+
+### Reading the JSON Report
+
+```bash
+trivy image --format json --output report.json myapp:1.0
+```
+
+The structure (simplified):
+
+```json
+{
+  "ArtifactName": "myapp:1.0",
+  "Results": [
+    {
+      "Target": "myapp:1.0 (debian 12.5)",
+      "Class": "os-pkgs",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2024-XXXXX",
+          "PkgName": "libssl3",
+          "InstalledVersion": "3.0.11-1",
+          "FixedVersion": "3.0.13-1",
+          "Severity": "CRITICAL",
+          "Title": "openssl: ...",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-xxxxx"
+        }
+      ]
+    },
+    { "Target": "Python", "Class": "lang-pkgs", "Vulnerabilities": [ ... ] }
+  ]
+}
+```
+
+Useful `jq` recipes:
+
+```bash
+# Count findings by severity
+jq -r '[.Results[]?.Vulnerabilities[]?] | group_by(.Severity)
+       | map("\(.[0].Severity): \(length)") | .[]' report.json
+
+# List fixable CRITICAL and HIGH issues with the exact upgrade target
+jq -r '.Results[]?.Vulnerabilities[]?
+       | select((.Severity=="CRITICAL" or .Severity=="HIGH") and .FixedVersion != null)
+       | "\(.Severity)  \(.VulnerabilityID)  \(.PkgName) \(.InstalledVersion) -> \(.FixedVersion)"' report.json | sort
+
+# Which packages account for the most findings?
+jq -r '.Results[]?.Vulnerabilities[]? | .PkgName' report.json | sort | uniq -c | sort -rn | head
+```
+
+### False Positives and Noise
+
+| Situation | Explanation | Response |
+| :--- | :--- | :--- |
+| **Vulnerable code not used** | The package is present but the vulnerable function is never called | Document the reason (and optionally a VEX statement). Prefer removing the package. |
+| **Distro backported the fix** | The version number looks old but the distribution patched it | Trivy normally uses distro data to handle this. Verify before ignoring. |
+| **Vulnerability needs conditions you do not meet** | For example, a feature or configuration you do not enable | Document and re-evaluate if configuration changes. |
+| **Wrong component identification** | Rare, can occur with unusual packaging | Verify manually and report to the tool's maintainers. |
+
+For suppressions use `.trivyignore` with an **expiry and a reason**. Trivy also supports **VEX** (Vulnerability Exploitability eXchange) documents, which are structured statements such as "this product is **not affected** by CVE-X because...".
+
+### Compare Before and After
+
+When you change the base image or update a library, **compare reports** to prove improvement:
+
+```bash
+trivy image --format json -o before.json myapp:1.0
+trivy image --format json -o after.json  myapp:1.1
+
+for f in before after; do
+  echo "== $f"
+  jq -r '[.Results[]?.Vulnerabilities[]?] | group_by(.Severity) | map("\(.[0].Severity): \(length)") | .[]' $f.json
+done
+```
+
+---
+
+## 10. Remediating Container Vulnerabilities
+
+### The Remediation Decision Path
+
+```text
+                       Finding in the report
+                               |
+              Which part of the image is it in?
+             /                                  \
+     OS package                          Language library / your dependency
+  (from the base image)                  (pip, npm, Maven, Go modules ...)
+             |                                       |
+   +---------+------------+                 +--------+---------+
+   |                      |                 |                  |
+ Newer base image     No fix exists       Update to the     No fixed version
+ fixes it?            for this OS yet     fixed version     available
+   |                      |                 |                  |
+ REBUILD on the       Switch to a         Update, test,     Replace the library,
+ updated base         smaller / different  rebuild, rescan   mitigate, or accept
+ (pull + rebuild)     base, remove the                       with expiry
+                      package, or accept
+```
+
+### Fix 1: Rebuild on an Updated Base Image
+
+Most OS-level fixes arrive simply by **pulling the newest version of your base image** and rebuilding.
+
+```bash
+docker pull python:3.12-slim                         # get the latest patched base
+docker build --pull --no-cache -t myapp:1.1 .        # --pull checks for newer base layers
+trivy image --severity HIGH,CRITICAL --ignore-unfixed myapp:1.1
+```
+
+Automate this with scheduled rebuilds and Dependabot or Renovate pull requests for base image updates.
+
+### Fix 2: Choose a Smaller Base Image
+
+```dockerfile
+# Before: full image, hundreds of packages
+FROM python:3.12
+
+# After: slim image, far fewer packages
+FROM python:3.12-slim
+
+# Even better for suitable apps: distroless, no shell, no package manager
+FROM gcr.io/distroless/python3-debian12:nonroot
+```
+
+Fewer packages means fewer findings **and** less for an attacker to use.
+
+### Fix 3: Use a Multi-Stage Build
+
+Vulnerabilities in **build tools** (compilers, `git`, `pip` caches) disappear when those tools never reach the final image (section 4).
+
+### Fix 4: Update Application Dependencies
+
+For a language library finding:
+
+```text
+CRITICAL  CVE-XXXX-NNNN  requests  2.25.0 -> 2.32.4
+```
+
+```bash
+# Update the pinned version
+sed -i 's/^requests==.*/requests==2.32.4/' requirements.txt     # or edit by hand
+
+# Rebuild, rescan, and run your tests
+docker build -t myapp:1.2 . && trivy image --severity HIGH,CRITICAL --ignore-unfixed myapp:1.2
+```
+
+Let **Dependabot** open these pull requests automatically (Module 03). Always run tests, because major version upgrades can break code.
+
+### Fix 5: Remove Unneeded Packages
+
+If a vulnerable package is not required to run the application, **uninstall it** (or never install it). A package that is not there cannot be exploited.
+
+### Fix 6: When No Fix Exists
+
+| Option | Details |
+| :--- | :--- |
+| **Mitigate** | Reduce exposure: block the vulnerable network path, disable the feature, add a WAF rule, restrict access. |
+| **Change the base** | Another distribution may already have a fix or may not include the package. |
+| **Accept the risk, temporarily** | Record it in `.trivyignore` (with `exp:` date, reason, and approver). |
+| **Replace the component** | Use a different library or tool. |
+| **Monitor** | Re-scan regularly. Fixes appear over time. |
+
+### Verify the Fix
+
+A fix is **not complete until you prove it**:
+
+1. Rebuild the image.
+2. **Rescan** it and confirm the finding is gone and nothing worse appeared.
+3. Run your **tests**, because updates can break behavior.
+4. Roll out by **digest** and keep a record.
+
+### Example: A Step-by-Step Improvement
+
+| Step | Change | Typical Effect on Findings |
+| :---: | :--- | :--- |
+| 0 | Start: `python:3.8`, old dependencies, root user | Very many findings (hundreds), including CRITICAL |
+| 1 | Switch to `python:3.8-slim` | Large drop in OS findings |
+| 2 | Move to `python:3.12-slim` and update dependencies | Large drop again, library findings mostly gone |
+| 3 | Multi-stage build, non-root user, `.dockerignore` | Fewer files and tools, no secrets, cleaner misconfiguration scan |
+
+You will do exactly this in Lab 4.
+
+### Patch Timelines (Example Only)
+
+Adapt to your organization's policy:
+
+| Severity | Typical Target |
+| :--- | :--- |
+| **CRITICAL (fixable)** | Hours to a few days. Block release. |
+| **HIGH (fixable)** | Within days to two weeks. Block release. |
+| **MEDIUM** | Within the normal sprint or release cycle. |
+| **LOW** | Routine maintenance. |
+
+### Keep Scanning After Release
+
+New CVEs appear **after** you ship. Schedule a **recurring scan of images in your registry and in production**, and have a process for rebuilding and redeploying when a serious new issue appears.
+
+---
+
+## 11. Introduction to Cosign
+
+### The Problem: How Do You Know an Image Is Genuine?
+
+You pull `ghcr.io/my-org/myapp:1.0`. How can you be sure that:
+
+1. It was built by **your pipeline**, not by an attacker who stole a registry password?
+2. It has **not been changed** since it was built?
+3. The tag `1.0` was not **overwritten** with something malicious?
+
+Scanning tells you what is **inside** an image. It does **not** tell you **who made it** or whether it was **tampered with**. **Signing** answers those questions.
+
+> **Analogy:** A vulnerability scan is a **health inspection** of the food. A signature is the **tamper-evident seal** that shows the package left the real factory and nobody opened it.
+
+### What Is Cosign?
+
+**Cosign** is a tool from the **Sigstore** project for **signing and verifying** container images (and other software artifacts). It stores signatures **in the registry next to the image**, so no separate system is needed.
+
+### The Sigstore Ecosystem
+
+| Component | Role |
+| :--- | :--- |
+| **Cosign** | The command-line tool you use to sign and verify. |
+| **Fulcio** | A certificate authority that issues **short-lived certificates** tied to an identity (for example, "this GitHub Actions workflow"). Used for **keyless** signing. |
+| **Rekor** | A public, tamper-evident **transparency log** that records signatures, so they can be audited. |
+| **TUF root of trust** | A secure way for Cosign to obtain Sigstore's public trust material. |
+
+### Two Ways to Sign
+
+| | **Key-based signing** | **Keyless signing** |
+| :--- | :--- | :--- |
+| **How it works** | You create a **key pair** and sign with the **private key** | You prove your **identity** (for example, through GitHub Actions' OIDC token) and get a **short-lived certificate** |
+| **What you must protect** | The **private key**, forever | Nothing long-lived: the key exists for minutes |
+| **Verification uses** | The **public key** | The **identity** and **issuer** ("signed by this workflow of this repo") |
+| **Risk** | A stolen key lets anyone sign as you | A misconfigured identity check accepts the wrong signer |
+| **Best for** | Air-gapped or private environments, learning the basics | **CI/CD pipelines**, public and open-source projects |
+
+```text
+KEY-BASED                                       KEYLESS (in GitHub Actions)
+
+ private key (secret!)                           Workflow proves identity to GitHub (OIDC token)
+        |                                                    |
+        v                                                    v
+ cosign sign  ---> signature in registry          Fulcio issues a short-lived certificate
+                                                             |
+ cosign verify --key cosign.pub                              v
+                                                  cosign sign ---> signature + certificate
+                                                  in registry, and a record in Rekor
+                                                             |
+                                                  cosign verify
+                                                    --certificate-identity  (which workflow?)
+                                                    --certificate-oidc-issuer (which issuer?)
+```
+
+### What a Signature Proves, and What It Does Not
+
+| ✅ A valid signature proves | ❌ It does **not** prove |
+| :--- | :--- |
+| The image content **has not changed** since signing | That the image is **free of vulnerabilities** |
+| The image was signed by **the holder of the key**, or by the **expected workflow identity** | That the **code** inside is safe or benign |
+| (With a transparency log) when it was signed and that it was recorded | That the **signer's system was not compromised** |
+
+> [!IMPORTANT]
+> **Signing is only as trustworthy as the system doing the signing.** If an attacker controls your CI pipeline, they can sign a malicious image with your valid identity. That is why pipeline security (Modules 03 and 10) and **scanning before signing** both matter.
+
+### Signing the Digest, Not the Tag
+
+Cosign signatures belong to an image **digest**. A tag is only a pointer.
+
+```text
+ tag  myapp:1.0  ----points to---->  digest sha256:AAA...   (signed)
+
+ Attacker overwrites the tag:
+ tag  myapp:1.0  ----points to---->  digest sha256:BBB...   (NOT signed: verification FAILS)
+```
+
+This is exactly how signatures catch **tag tampering**. Always pass the **digest** to `cosign sign` and deploy by digest.
+
+### Attestations: Signed Statements About an Image
+
+Besides a signature, Cosign can attach a **signed attestation**: a verifiable statement about the image, such as:
+
+| Attestation Type | What It States |
+| :--- | :--- |
+| **SBOM** (CycloneDX or SPDX) | "This image contains exactly these components." |
+| **Vulnerability scan result** | "This image was scanned on this date with this result." |
+| **Build provenance** (SLSA) | "This image was built from this source by this workflow." |
+
+Policies can then require, for example, "**no image may deploy without a signed SBOM and a passing scan attestation**."
+
+### Where Signatures Fit in the Pipeline
+
+```text
+Build --> Scan (Trivy) --> Pass? --> Push --> SIGN (Cosign) --> ... --> VERIFY (Cosign) --> Deploy
+                              |                                              |
+                          fail: stop                                    fail: refuse to run
+```
+
+### Installing Cosign
+
+Install Cosign **the same careful way** as Trivy: a **pinned, verified** release. The Sigstore documentation explains how to verify the Cosign binary itself.
+
+```bash
+# Example for Linux amd64 (use a release you have verified; confirm the file name on the releases page)
+COSIGN_VERSION=3.0.2           # example only
+curl -sSfL -O "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64"
+curl -sSfL -O "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign_checksums.txt"
+sha256sum --check --ignore-missing cosign_checksums.txt
+sudo install -m 0755 cosign-linux-amd64 /usr/local/bin/cosign
+cosign version
+```
+
+Package managers (`brew install cosign`) also work. The examples in this module assume **Cosign v3**. Cosign v3 uses a newer signature **bundle format** by default, so some flags differ from older tutorials. When a flag does not exist in your version, check `cosign sign --help`.
+
+---
+
+## 12. Signing Container Images with Cosign
+
+### Method 1: Key-Based Signing (Learning and Private Environments)
+
+**Step 1: Generate a key pair.**
+
+```bash
+cosign generate-key-pair
+```
+
+You are asked for a **password** to encrypt the private key. This creates:
+
+| File | What It Is | Handling |
+| :--- | :--- | :--- |
+| `cosign.key` | The **private** signing key (encrypted with your password) | **Secret.** Never commit it. Add it to `.gitignore`. Store it in a secret manager. |
+| `cosign.pub` | The **public** verification key | Safe to share and commit. Anyone verifying needs it. |
+
+```bash
+echo "cosign.key" >> .gitignore
+```
+
+> [!CAUTION]
+> Gitleaks (Module 03) will flag `cosign.key` as a private key, and rightly so. Keep it out of Git, and in CI store it as a **secret** (and its password as a separate secret).
+
+**Step 2: Push your image and get its digest.**
+
+```bash
+docker push registry.example.com/myapp:1.0
+
+# The digest is shown at the end of the push, or:
+docker inspect --format '{{index .RepoDigests 0}}' registry.example.com/myapp:1.0
+# registry.example.com/myapp@sha256:3f1c9a...e9
+```
+
+**Step 3: Sign the digest.**
+
+```bash
+export COSIGN_PASSWORD="..."        # or let Cosign prompt you; in CI use a secret
+cosign sign --yes --key cosign.key registry.example.com/myapp@sha256:3f1c9a...e9
+```
+
+The signature is stored in the same registry, attached to that digest. `--yes` skips confirmation prompts, which is needed in automation.
 
 > [!NOTE]
-> You enabled the basics in Module 03 (section 4.8). Here you go deeper: how to **read** alerts, **tune** the configuration, and **handle** pull requests safely.
+> **Transparency log:** by default, Cosign records signatures in the **public Rekor log**, which publishes the image **name and digest**. For **private images** you may not want that. Options are a private Sigstore deployment or `--tlog-upload=false` when signing (verification must then be told to expect no log entry, see section 13). The labs use `--tlog-upload=false` because the lab image is local and private. Your organization's policy decides the right choice.
 
-### Turn It On (Recap)
+**Step 4: Check what is attached.**
 
-1. Repository **Settings → Advanced Security** (older interface: **Code security and analysis**).
-2. Enable **Dependency graph**, **Dependabot alerts**, and **Dependabot security updates**.
-3. Add `.github/dependabot.yml` for version updates.
-
-Dependabot supports many ecosystems, including `maven`, `gradle`, `npm`, `pip`, `docker`, `github-actions`, `terraform`, `gomod`, `cargo`, `nuget`, and `bundler`.
-
-### A More Complete `dependabot.yml`
-
-```yaml
-version: 2
-updates:
-
-  # Java / Maven
-  - package-ecosystem: "maven"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-    groups:
-      minor-and-patch:                   # one combined PR for low-risk updates
-        update-types: ["minor", "patch"]
-    ignore:
-      - dependency-name: "org.example:legacy-lib"      # documented exception
-        versions: ["3.x"]
-    cooldown:
-      default-days: 5                    # wait a few days after a release before proposing it
-
-  # Python
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-
-  # Container base images (Module 07)
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-
-  # GitHub Actions: keeps pinned action SHAs current (Modules 03 and 07)
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
+```bash
+cosign tree registry.example.com/myapp@sha256:3f1c9a...e9
 ```
 
-| Setting | Purpose |
-| :--- | :--- |
-| `package-ecosystem` | The type of dependency files to watch. |
-| `directory` | Where those files are. Add one entry per folder in a monorepo. |
-| `schedule` | How often to check (`daily`, `weekly`, `monthly`). |
-| `open-pull-requests-limit` | Prevents a flood of pull requests. |
-| `groups` | Combine related updates into **one** pull request, which reduces noise. |
-| `ignore` | Skip specific dependencies or versions. **Document the reason.** |
-| `labels`, `reviewers` | Organize and route the pull requests. |
-| `cooldown` | A newer option that **delays** proposing brand-new releases, giving the community time to spot a malicious version. Check the current documentation for exact options. |
+### Method 2: Keyless Signing (Recommended for CI/CD)
 
-### Reading a Dependabot Alert
+In GitHub Actions, the workflow can obtain a short-lived identity token and sign **without any stored key**:
 
-Open the repository's **Security → Dependabot** tab, then an alert:
-
-| Field | What It Tells You |
-| :--- | :--- |
-| **Package and ecosystem** | What is affected. |
-| **Severity and CVSS** | How serious. |
-| **Vulnerable version range** | Which versions are affected. |
-| **Patched version** | The version to upgrade to. |
-| **Manifest path** | Which file declares it. |
-| **Relationship** | **Direct** or **transitive**. |
-| **CVE, GHSA, CWE** | Identifiers and weakness type. |
-| **EPSS** (where shown) | The likelihood of exploitation. |
-
-### Dismissing an Alert Responsibly
-
-If you decide not to fix an alert, **dismiss it with an honest reason** (the choices are along the lines of: *a fix has already started*, *no bandwidth to fix*, *risk is tolerable*, *vulnerable code is not actually used*, *inaccurate*). Add a comment explaining the decision. Dismissed alerts are an audit trail.
-
-### Handling Dependabot Pull Requests Safely
-
-A Dependabot pull request is **code you did not write** that changes your dependencies. Treat it with care:
-
-| Step | Why |
-| :--- | :--- |
-| **Check that CI passes**, including tests, Gitleaks, SAST, and the SCA scan | A dependency update can break behavior or introduce new issues. |
-| **Read the release notes and changelog** | Look for breaking changes. |
-| **Look at the size of the change** | A tiny patch bump should not rewrite large files. |
-| **Be wary of very new releases and major jumps** | These carry more risk. |
-| **Do not auto-merge blindly** | Auto-merge only low-risk updates (patch updates with a strong test suite), and require passing checks. |
-| **Watch for supply chain warning signs** | New maintainer, unusual install scripts, sudden large changes. |
-
-### Dependency Review: Stop Vulnerable Dependencies Before They Merge
-
-The **dependency review** action examines the **dependency changes in a pull request** and can **fail** the check when the pull request adds a vulnerable (or wrongly licensed) dependency.
-
-```yaml
-# .github/workflows/dependency-review.yml
-name: Dependency Review
-on: pull_request
-
-permissions:
-  contents: read
-
-jobs:
-  dependency-review:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4                      # pin to a full commit SHA in production
-      - uses: actions/dependency-review-action@v4      # pin to a full commit SHA in production
-        with:
-          fail-on-severity: high
-          # deny-licenses: GPL-3.0-only, AGPL-3.0-only   # example license policy
+```bash
+# Inside a workflow that has:  permissions: id-token: write
+cosign sign --yes ghcr.io/my-org/myapp@sha256:3f1c9a...e9
 ```
 
-Make it a **required status check** (Module 03, section 4.5). It relies on the dependency graph, and its availability for private repositories depends on your GitHub plan.
+No private key to rotate, store, or steal. The certificate records **which repository and workflow** performed the signing. Section 14 shows the full workflow.
 
-### How Dependabot Compares With Dependency-Check
+**On your own laptop**, the same command opens a browser to authenticate with an identity provider (such as GitHub or Google), then signs. This is good for demonstrations, but pipelines are the best place for keyless signing.
 
-| | **Dependabot** | **Dependency-Check** |
-| :--- | :--- | :--- |
-| **Runs where** | On GitHub | Anywhere: laptop, CI, Jenkins |
-| **Data source** | GitHub Advisory Database (ecosystem-aware) | NVD and others (CPE-based plus other analyzers) |
-| **Strength** | Automatic fix pull requests, low noise for supported ecosystems | Scans **files and JARs**, works offline-ish, flexible reports and gates |
-| **Weakness** | GitHub-centric, sees only declared dependencies | Can be noisier, heavy first-run database |
-| **Best use** | Day-to-day updates and alerts | CI gates and scans of built artifacts |
+### Method 3: Keys in a Key Management Service
 
-They **complement** each other. Many teams use both.
+For organizations that want key-based signing with strong protection, the private key can live inside a **KMS or HSM**, and Cosign asks the service to sign without ever seeing the key:
+
+```bash
+cosign sign --key awskms:///alias/my-signing-key  registry.example.com/myapp@sha256:...
+cosign sign --key gcpkms://projects/.../cryptoKeys/my-key  registry.example.com/myapp@sha256:...
+cosign sign --key azurekms://myvault.vault.azure.net/mykey registry.example.com/myapp@sha256:...
+cosign sign --key hashivault://my-key  registry.example.com/myapp@sha256:...
+```
+
+(HashiCorp Vault is covered in Module 11.)
+
+### Attach an SBOM as a Signed Attestation
+
+```bash
+# 1. Generate the SBOM
+trivy image --format cyclonedx --output sbom.cdx.json registry.example.com/myapp@sha256:3f1c9a...e9
+
+# 2. Attach it as a signed attestation
+cosign attest --yes --key cosign.key --type cyclonedx \
+  --predicate sbom.cdx.json \
+  registry.example.com/myapp@sha256:3f1c9a...e9
+```
+
+Attestation types include `cyclonedx`, `spdxjson`, `slsaprovenance`, and `vuln` (the exact list depends on your Cosign version).
+
+### Add Annotations (Optional Metadata)
+
+```bash
+cosign sign --yes --key cosign.key \
+  -a build.pipeline=github-actions -a build.commit=3f9a1c2 \
+  registry.example.com/myapp@sha256:3f1c9a...e9
+```
+
+### Signing Best Practices
+
+| Practice | Why |
+| :--- | :--- |
+| **Scan first, then sign** | A signature should mean "this passed our checks". |
+| **Sign digests, never tags** | Tags can be moved. |
+| **Prefer keyless in CI** | No long-lived key to leak. |
+| **Protect private keys** | KMS or HSM, strong passphrase, strict access, rotation plan. |
+| **Sign only from trusted pipelines** | Restrict who and what can sign (protected branches, protected environments). |
+| **Do not sign from pull requests of forks** | Untrusted code must not obtain signing identity. |
+| **Record signatures** (transparency log) where appropriate | Allows auditing. |
+| **Keep the signing identity narrow** | A broad identity makes verification weaker. |
 
 ---
 
-## 10. Integrating SCA into CI/CD
+## 13. Verifying Container Image Signatures
 
-### The Pipeline Design
+Signing is useless unless something **checks** the signature before the image runs.
 
-```text
- Commit / Pull request
-        |
-        +--> Dependency review action     (fails if the PR ADDS a vulnerable dependency)
-        |
-        v
- Build: resolve dependencies
-        |
-        +--> Dependency-Check scan        (fails on CVSS >= threshold)
-        |
-        +--> Syft: generate SBOM          (CycloneDX + SPDX)
-        |
-        +--> Scan the SBOM (Grype/Trivy)  (second opinion, optional)
-        |
-        v
- Upload reports and SBOM as artifacts
-        |
-        v
- (Release) Sign / attest the SBOM, store it, and re-scan it on a schedule
+### Verify a Key-Based Signature
+
+```bash
+cosign verify --key cosign.pub registry.example.com/myapp@sha256:3f1c9a...e9
 ```
 
-### GitHub Actions: Dependency-Check and SBOM
+On success Cosign prints a short description of the checks and the signature payload as JSON. On failure it exits with a **non-zero code** and a message such as `no signatures found` or `no matching signatures`, which makes it perfect for scripts and pipelines.
 
-This workflow uses **plain Docker commands** and a **pinned, checksum-verified Syft**, so few third-party actions are involved. Set repository **variables** `ODC_VERSION` and `SYFT_VERSION` (to verified releases), and a repository **secret** `NVD_API_KEY`.
+If you signed with `--tlog-upload=false`, add `--insecure-ignore-tlog=true` to verify (as in the lab), because there is no log entry to check:
+
+```bash
+cosign verify --key cosign.pub --insecure-ignore-tlog=true registry.example.com/myapp@sha256:3f1c9a...e9
+```
+
+### Verify a Keyless Signature
+
+You must say **who** you expect the signer to be. Without this check, "any valid Sigstore signature" would pass, including an attacker's own.
+
+```bash
+cosign verify ghcr.io/my-org/myapp@sha256:3f1c9a...e9 \
+  --certificate-identity "https://github.com/my-org/my-repo/.github/workflows/container-security.yml@refs/heads/main" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+| Flag | Meaning |
+| :--- | :--- |
+| `--certificate-identity` | The **exact identity** that must have signed (here: this repository's workflow file on the `main` branch). |
+| `--certificate-identity-regexp` | A **pattern** instead of an exact match. Use carefully: a broad pattern accepts more signers. |
+| `--certificate-oidc-issuer` | Who vouches for the identity (GitHub Actions' token service here). |
+
+> [!WARNING]
+> **Never verify keyless signatures without pinning the identity and issuer.** A very loose pattern such as `.*` turns verification into a rubber stamp.
+
+### Verify an Attestation (for Example, the SBOM)
+
+```bash
+cosign verify-attestation --key cosign.pub --type cyclonedx \
+  registry.example.com/myapp@sha256:3f1c9a...e9 > attestation.json
+
+# Extract the SBOM from the verified attestation
+jq -r '.payload' attestation.json | base64 -d | jq '.predicate' > verified-sbom.json
+```
+
+(With Cosign v3 and keyless signing, the output envelope may use a slightly different field layout. Inspect the JSON if the extraction differs.)
+
+### Test That Verification Really Catches Tampering
+
+```text
+ 1. Sign:       myapp@sha256:AAA       -> verification PASSES
+ 2. Attacker overwrites the TAG "1.0" with a different image (digest BBB)
+ 3. Verify the TAG:   cosign verify --key cosign.pub registry/myapp:1.0
+                      -> FAILS: no signature exists for digest BBB
+```
+
+You will reproduce this in Lab 6.
+
+### Common Verification Failures
+
+| Message or Symptom | Likely Cause |
+| :--- | :--- |
+| `no signatures found` / `no matching signatures` | The image (digest) was never signed, was re-pushed, or was signed with a different key or identity. |
+| `invalid signature` | The content or signature does not match. Treat as **tampering** until proven otherwise. |
+| `none of the expected identities matched` | The signer's identity differs from the one you pinned (for example, a different workflow file or branch). |
+| `certificate expired` or timestamp errors | Keyless verification needs the transparency log or a signed timestamp. Do not disable checks to "fix" it. Find the cause. |
+| Error about the transparency log with a **key signed using `--tlog-upload=false`** | Verify with `--insecure-ignore-tlog=true` (and understand the trade-off). |
+| Registry authentication errors | `docker login` first, or provide credentials in CI. |
+
+### A Verify-Then-Deploy Script
+
+```bash
+#!/usr/bin/env bash
+# deploy.sh : refuse to run an image that is not properly signed
+set -euo pipefail
+
+IMAGE="$1"       # must be a DIGEST reference: registry/app@sha256:...
+case "$IMAGE" in
+  *@sha256:*) ;;
+  *) echo "Refusing: deploy by digest, not by tag." >&2; exit 1 ;;
+esac
+
+if cosign verify --key cosign.pub "$IMAGE" > /dev/null 2>&1; then
+  echo "Signature verified. Starting container..."
+  docker run -d --name myapp "$IMAGE"
+else
+  echo "SIGNATURE VERIFICATION FAILED. Not deploying." >&2
+  exit 1
+fi
+```
+
+### Where Verification Should Happen
+
+| Place | How |
+| :--- | :--- |
+| **In the deploy step of your pipeline** | `cosign verify` before `docker run` or `helm upgrade`. |
+| **On the host or in scripts** | As in the script above. |
+| **In Kubernetes (admission control)** | A policy engine such as **Kyverno** (Module 08) rejects unsigned or wrongly signed images **automatically** for the whole cluster. This is the strongest option because nobody can forget to check. |
+
+> [!NOTE]
+> The Docker Engine by itself does **not** verify Cosign signatures. Enforcement comes from your pipeline, scripts, or a Kubernetes admission controller.
+
+### Verify Your Tools Too
+
+The same technique protects your **tooling**. Verify the Trivy release signature before installing it (section 7), and verify the signatures of base images that publish them. A secure supply chain verifies **inputs**, not just **outputs**.
+
+---
+
+## 14. Container Security in CI/CD
+
+### The Secure Image Pipeline
+
+```text
+  Commit
+     |
+     v
+ 1. LINT + SCAN SOURCE      Hadolint, trivy config, trivy fs, Gitleaks (M03), SAST (M04)
+     |
+     v
+ 2. BUILD IMAGE             docker build (pinned base, multi-stage, non-root)
+     |
+     v
+ 3. SCAN IMAGE              trivy image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed
+     |      FAIL --------> stop. The image is never pushed.
+     v
+ 4. GENERATE SBOM           trivy image --format cyclonedx
+     |
+     v
+ 5. PUSH TO REGISTRY        get the DIGEST
+     |
+     v
+ 6. SIGN + ATTEST           cosign sign / cosign attest (keyless in CI)
+     |
+     v
+ 7. VERIFY                  cosign verify (pinned identity)
+     |
+     v
+ 8. DEPLOY BY DIGEST        admission control re-verifies (Module 08)
+```
+
+### Pipeline Security Principles
+
+| Principle | How |
+| :--- | :--- |
+| **Scan before you push** | Bad images never reach the registry. |
+| **Pin everything** | Actions by **commit SHA**, tools by **exact version**, base images by **digest**. |
+| **Least privilege** | Minimal `permissions:` for the workflow token. |
+| **Short-lived credentials** | Keyless signing with OIDC, no stored signing keys or cloud keys. |
+| **Sign only trusted builds** | Signing steps run only on protected branches. |
+| **Keep reports** | Upload scan reports and SBOMs as build artifacts. |
+| **Treat CI tools as part of the supply chain** | See the case study in section 7. |
+
+### Pin GitHub Actions to a Commit SHA
+
+Tags such as `@v4` can be re-pointed. A commit SHA cannot. Find the SHA that a tag points to:
+
+```bash
+git ls-remote --tags https://github.com/actions/checkout "refs/tags/v4*"
+# Use the full 40-character commit SHA (for annotated tags, use the line ending in ^{})
+```
+
+Then use it, with a comment naming the version:
 
 ```yaml
-# .github/workflows/sca.yml
-name: SCA - Dependencies and SBOM
+- uses: actions/checkout@<full-40-character-commit-sha>   # v4.x.x
+```
+
+Keep the pinned SHAs current with **Dependabot** (`package-ecosystem: "github-actions"`), and consider GitHub's repository or organization setting that **requires actions to be pinned to a full commit SHA** (look under Settings → Actions). In the examples below, tags such as `@v4` appear for readability, and the comments remind you to pin.
+
+### GitHub Actions: Full Workflow
+
+This workflow builds, scans (and **fails on fixable HIGH and CRITICAL** findings), generates an SBOM, pushes to GHCR, **keylessly signs**, **verifies**, and attaches the SBOM as an attestation. It uses **plain Docker commands** and a **pinned, checksum-verified Trivy**, so it needs very few third-party actions.
+
+```yaml
+# .github/workflows/container-security.yml
+name: Container Security
 
 on:
   pull_request:
   push:
     branches: [main]
-  schedule:
-    - cron: "0 4 * * *"          # daily: new CVEs appear even when code does not change
 
 permissions:
-  contents: read
+  contents: read                  # least privilege by default
+
+env:
+  TRIVY_VERSION: "0.71.0"        # example: use a release you have verified. Never "latest".
 
 jobs:
-  sca:
+  build-scan-sign:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write             # push to GHCR
+      id-token: write             # keyless signing (OIDC)
     steps:
       - name: Check out code
-        uses: actions/checkout@v4                 # pin to a full commit SHA in production
+        uses: actions/checkout@v4          # PIN to a full commit SHA in production
 
-      - name: Resolve dependencies (Maven)
+      - name: Set image name (GHCR requires lowercase)
         run: |
-          docker run --rm -v "$PWD":/app -w /app maven:3.9-eclipse-temurin-17 \
-            mvn -q -B dependency:copy-dependencies -DoutputDirectory=libs
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
-      - name: Cache the Dependency-Check database
-        uses: actions/cache@v4                    # pin to a full commit SHA in production
-        with:
-          path: odc-data
-          key: odc-data-${{ github.run_id }}
-          restore-keys: odc-data-
+      - name: Lint the Dockerfile (Hadolint)
+        run: docker run --rm -i hadolint/hadolint < Dockerfile
 
-      - name: Run Dependency-Check (SECURITY GATE)
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-          ODC_VERSION: ${{ vars.ODC_VERSION }}
-        run: |
-          mkdir -p odc-data odc-reports
-          docker run --rm -u "$(id -u):$(id -g)" \
-            -e NVD_API_KEY \
-            -v "$PWD:/src:z" \
-            -v "$PWD/odc-data:/usr/share/dependency-check/data:z" \
-            -v "$PWD/odc-reports:/report:z" \
-            "owasp/dependency-check:${ODC_VERSION}" \
-              --scan /src/libs \
-              --project "${GITHUB_REPOSITORY}" \
-              --format HTML --format JSON --format SARIF \
-              --out /report \
-              --suppression /src/.sca/suppressions.xml \
-              --nvdApiKey "$NVD_API_KEY" \
-              --failOnCVSS 7
+      - name: Build the image
+        run: docker build -t "${IMAGE}:${GITHUB_SHA}" .
 
-      - name: Install Syft (pinned and checksum-verified)
-        if: always()
-        env:
-          SYFT_VERSION: ${{ vars.SYFT_VERSION }}
+      - name: Install Trivy (pinned and checksum-verified)
         run: |
           set -euo pipefail
-          base="https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}"
-          file="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          file="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
           curl -sSfL -O "${base}/${file}"
-          curl -sSfL -O "${base}/syft_${SYFT_VERSION}_checksums.txt"
-          sha256sum --check --ignore-missing "syft_${SYFT_VERSION}_checksums.txt"
-          sudo tar -xzf "${file}" -C /usr/local/bin syft
-          syft version
+          curl -sSfL -O "${base}/trivy_${TRIVY_VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "trivy_${TRIVY_VERSION}_checksums.txt"
+          sudo tar -xzf "${file}" -C /usr/local/bin trivy
+          trivy --version
 
-      - name: Generate the SBOM
-        if: always()
+      - name: Scan Dockerfile and config for misconfigurations
+        run: trivy config --exit-code 1 --severity HIGH,CRITICAL .
+
+      - name: Scan the image (SECURITY GATE)
         run: |
-          syft dir:./libs \
-            --source-name "${GITHUB_REPOSITORY}" --source-version "${GITHUB_SHA}" \
-            -o cyclonedx-json=sbom.cdx.json \
-            -o spdx-json=sbom.spdx.json
+          trivy image \
+            --exit-code 1 \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            --format json --output trivy-report.json \
+            "${IMAGE}:${GITHUB_SHA}"
 
-      - name: Upload reports and SBOMs
+      - name: Generate an SBOM
         if: always()
-        uses: actions/upload-artifact@v4          # pin to a full commit SHA in production
+        run: trivy image --format cyclonedx --output sbom.cdx.json "${IMAGE}:${GITHUB_SHA}"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4   # PIN to a full commit SHA in production
         with:
-          name: sca-reports
+          name: container-security-reports
           path: |
-            odc-reports/
+            trivy-report.json
             sbom.cdx.json
-            sbom.spdx.json
+
+      # ---- Everything below runs ONLY on main, never for pull requests ----
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push the image and capture its digest
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          DIGEST="$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE}:${GITHUB_SHA}")"
+          echo "IMAGE_DIGEST=${DIGEST}" >> "$GITHUB_ENV"
+          echo "Pushed: ${DIGEST}"
+
+      - name: Install Cosign
+        if: github.ref == 'refs/heads/main'
+        uses: sigstore/cosign-installer@v4   # PIN to a full commit SHA in production
+
+      - name: Sign the image (keyless)
+        if: github.ref == 'refs/heads/main'
+        run: cosign sign --yes "${IMAGE_DIGEST}"
+
+      - name: Attach the SBOM as a signed attestation
+        if: github.ref == 'refs/heads/main'
+        run: cosign attest --yes --type cyclonedx --predicate sbom.cdx.json "${IMAGE_DIGEST}"
+
+      - name: Verify the signature (pinned identity)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cosign verify "${IMAGE_DIGEST}" \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/container-security.yml@${GITHUB_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 | Part | Why It Matters |
 | :--- | :--- |
-| `schedule` (daily) | Finds **new** CVEs in unchanged code. |
-| `permissions: contents: read` | Least privilege for the workflow token. |
-| Resolve dependencies first | Dependency-Check scans **JAR files**. |
-| Cache `odc-data` | Avoids re-downloading the database each run. |
-| `NVD_API_KEY` as a **secret** | Never in the file or the logs. |
-| `--failOnCVSS 7` | **The gate**: fail on High and Critical findings. |
-| `--suppression` | Reviewed, documented exceptions only. |
-| `if: always()` on SBOM and upload | You still get reports when the gate fails. |
-| Syft pinned and verified | Avoids the "latest" and unverified-download traps from Module 07. |
+| `permissions` at top and job level | The default token is **read-only**. The job asks only for `packages: write` and `id-token: write`. |
+| Build **then scan, then push** | A failing scan stops the job before anything reaches the registry. |
+| Pinned, **checksum-verified Trivy** | Avoids the moving-tag and "latest" problems from the case study. |
+| `--exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed` | The **gate**: fail on fixable serious findings. |
+| Push, signing, and attestation only on `main` | Pull requests (especially from forks) never receive signing identity. |
+| `cosign sign` on the **digest** | The signature binds to exact content. |
+| Verification with `--certificate-identity` and issuer | Proves **this workflow** signed it, not just "someone". |
+| Reports uploaded with `if: always()` | You can read what failed. |
 
-### Pull Request Dependency Review
+> [!NOTE]
+> Action versions change. Look up current versions, **pin them by SHA**, and update with Dependabot. Using the official `aquasecurity/trivy-action` is possible, but if you do, pin it by **full commit SHA** (never a tag) and read the current advisory first. This workflow deliberately avoids it so students can see exactly what runs.
 
-Add the **dependency review** workflow from section 9 as a **separate, fast** check. It tells reviewers **exactly which dependency changes** a pull request introduces.
+### Make the Check Required
+
+As in Modules 03, 04, and 06: **Settings → Rules → Rulesets** → require the **Container Security** status check on `main`, so a failing scan blocks the merge.
 
 ### Jenkins: Pipeline
+
+This pipeline avoids mounting the Docker socket into the scanner. It exports the image to a tar file, scans it in a Trivy container, pushes, and signs with a key stored in Jenkins credentials.
 
 ```groovy
 // Jenkinsfile
@@ -1372,8 +1813,10 @@ pipeline {
     agent any
 
     environment {
-        ODC_VERSION  = '<a verified release>'       // set deliberately; never 'latest'
-        SYFT_VERSION = '<a verified release>'
+        REGISTRY      = 'registry.example.com'
+        IMAGE         = "${REGISTRY}/myapp"
+        TAG           = "${env.GIT_COMMIT?.take(8) ?: env.BUILD_NUMBER}"
+        TRIVY_VERSION = '0.71.0'            // example: use a verified release, never 'latest'
     }
 
     stages {
@@ -1381,48 +1824,79 @@ pipeline {
             steps { checkout scm }
         }
 
-        stage('Resolve Dependencies') {
+        stage('Lint Dockerfile') {
             steps {
-                sh '''
-                    docker run --rm -v "$PWD":/app -w /app maven:3.9-eclipse-temurin-17 \
-                      mvn -q -B dependency:copy-dependencies -DoutputDirectory=libs
-                '''
+                sh 'docker run --rm -i hadolint/hadolint < Dockerfile'
             }
         }
 
-        stage('SCA - Dependency-Check (Security Gate)') {
+        stage('Build') {
             steps {
-                withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-                    sh '''
-                        mkdir -p odc-reports "$HOME/odc-data"
-                        docker run --rm -u "$(id -u):$(id -g)" -e NVD_API_KEY \
-                          -v "$PWD:/src:z" \
-                          -v "$HOME/odc-data:/usr/share/dependency-check/data:z" \
-                          -v "$PWD/odc-reports:/report:z" \
-                          owasp/dependency-check:${ODC_VERSION} \
-                            --scan /src/libs --project "$JOB_NAME" \
-                            --format HTML --format JSON --format JUNIT \
-                            --out /report --nvdApiKey "$NVD_API_KEY" \
-                            --failOnCVSS 7
-                    '''
-                }
+                sh 'docker build -t "$IMAGE:$TAG" .'
+            }
+        }
+
+        stage('Scan (Security Gate)') {
+            steps {
+                sh '''
+                    docker save "$IMAGE:$TAG" -o image.tar
+                    mkdir -p reports && chmod a+w reports
+
+                    docker run --rm \
+                      -v trivy-cache:/root/.cache/ \
+                      -v "$PWD:/work" \
+                      aquasec/trivy:${TRIVY_VERSION} image \
+                        --input /work/image.tar \
+                        --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed \
+                        --format json --output /work/reports/trivy-report.json
+                '''
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'odc-reports/**', allowEmptyArchive: true
-                    junit allowEmptyResults: true, testResults: 'odc-reports/dependency-check-junit.xml'
+                    sh '''
+                        docker run --rm -v "$PWD:/work" aquasec/trivy:${TRIVY_VERSION} image \
+                          --input /work/image.tar --format cyclonedx --output /work/reports/sbom.cdx.json || true
+                    '''
+                    archiveArtifacts artifacts: 'reports/*', allowEmptyArchive: true
                 }
             }
         }
 
-        stage('Generate SBOM') {
+        stage('Push') {
+            when { branch 'main' }
             steps {
-                sh '''
-                    docker run --rm -v "$PWD:/work" anchore/syft:${SYFT_VERSION} \
-                      dir:/work/libs -o cyclonedx-json=/work/sbom.cdx.json -o spdx-json=/work/sbom.spdx.json
-                '''
-                archiveArtifacts artifacts: 'sbom.*.json', allowEmptyArchive: true
+                withCredentials([usernamePassword(credentialsId: 'registry-creds',
+                                                  usernameVariable: 'REG_USER',
+                                                  passwordVariable: 'REG_PASS')]) {
+                    sh '''
+                        echo "$REG_PASS" | docker login "$REGISTRY" -u "$REG_USER" --password-stdin
+                        docker push "$IMAGE:$TAG"
+                        docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$TAG" > digest.txt
+                    '''
+                }
             }
+        }
+
+        stage('Sign and Verify') {
+            when { branch 'main' }
+            steps {
+                withCredentials([file(credentialsId: 'cosign-key', variable: 'COSIGN_KEY'),
+                                 string(credentialsId: 'cosign-password', variable: 'COSIGN_PASSWORD'),
+                                 file(credentialsId: 'cosign-pub', variable: 'COSIGN_PUB')]) {
+                    sh '''
+                        DIGEST="$(cat digest.txt)"
+                        cosign sign --yes --key "$COSIGN_KEY" "$DIGEST"
+                        cosign verify --key "$COSIGN_PUB" "$DIGEST"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker logout "$REGISTRY" || true'
+            sh 'rm -f image.tar'
         }
     }
 }
@@ -1430,798 +1904,961 @@ pipeline {
 
 | Part | Why It Matters |
 | :--- | :--- |
-| `withCredentials` | The NVD key is injected temporarily and masked. The shell block is **single-quoted** so Jenkins does not interpolate the secret into the script text. |
-| A persistent `$HOME/odc-data` | Keeps the database between builds. |
-| `--failOnCVSS 7` | A non-zero exit **fails the stage** and stops the pipeline. |
-| `junit` | Shows findings as test-style results in Jenkins. |
-| Pinned versions | No `latest`. |
+| `docker save` then `--input` | The scanner needs **no Docker socket**. |
+| `aquasec/trivy:${TRIVY_VERSION}` | Pinned tag (pin the digest for more safety). |
+| `exit-code 1` | A non-zero exit fails the stage and stops the pipeline. |
+| `withCredentials` | Secrets are injected temporarily and masked in logs. |
+| `when { branch 'main' }` | Pushing and signing only from the protected branch. |
+| `docker logout` and `rm image.tar` in `post` | Clean up credentials and artifacts. |
 
 > [!NOTE]
-> A **Jenkins plugin** for Dependency-Check also exists. It offers trend charts and build-failure thresholds (`dependencyCheckPublisher`). Plugin parameters change between versions, so follow the plugin's current documentation if you prefer it. The Docker approach shown here behaves the same way on every CI system.
+> The pipeline assumes `cosign` is installed on the Jenkins agent from a **verified release** (section 11). For private images signed with a key, consider the transparency log note in section 12 and add the matching flags.
 
-### Re-Scan Stored SBOMs on a Schedule
+### Scheduled Rescans
 
-New vulnerabilities appear **after** release. Keep each release's SBOM, and re-scan them regularly:
+Add a **scheduled** pipeline (nightly or weekly) that scans the images **currently in your registry**, because new vulnerabilities are published every day:
 
-```bash
-# Nightly job: re-scan the SBOMs of everything that is deployed
-for f in sboms/*.cdx.json; do
-  echo "== $f"
-  trivy sbom "$f" --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0
-done
+```yaml
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
 ```
-
-Or upload SBOMs to **Dependency-Track**, which does this continuously and notifies you.
-
-### Make It Required
-
-As in earlier modules: **Settings → Rules → Rulesets** → require the **SCA** and **Dependency Review** checks on `main`.
 
 ---
 
-## 11. Security Gates and Vulnerability Remediation
+## 15. Runtime Security Fundamentals
 
-### What Is an SCA Security Gate?
+A secure image can still be **run insecurely**. Runtime settings decide how much damage an attacker can do if they get in.
 
-A **gate** is a rule that decides whether the pipeline may continue after the scan. A scan without a gate is only advice.
-
-```text
- SCA scan  -->  Meets policy?  --NO-->  FAIL: block merge or release, create a ticket
-                    |
-                   YES
-                    v
-                 Continue
-```
-
-### Gate Options
-
-| Method | How |
-| :--- | :--- |
-| **CVSS threshold** | `dependency-check --failOnCVSS 7` fails on High and Critical. |
-| **Severity filter in a script** | Parse the JSON report and count findings by severity (below). |
-| **Dependency review** | Fails a pull request that **adds** a vulnerable dependency. |
-| **SBOM scan** | `trivy sbom --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed` or `grype ... --fail-on high`. |
-| **Jenkins publisher thresholds** | Fail or mark unstable by counts per severity. |
-| **License policy** | Fail on disallowed licenses (dependency review `deny-licenses`, Trivy license scanning). |
-
-A custom gate script:
-
-```bash
-#!/usr/bin/env bash
-# sca-gate.sh : fail the pipeline based on the Dependency-Check JSON report
-R="${1:-odc-reports/dependency-check-report.json}"
-
-CRIT=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="CRITICAL")] | length' "$R")
-HIGH=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="HIGH")] | length' "$R")
-echo "Critical: $CRIT   High: $HIGH"
-
-if [ "$CRIT" -gt 0 ]; then echo "GATE FAILED: Critical vulnerabilities found."; exit 1; fi
-if [ "$HIGH" -gt 3 ]; then echo "GATE FAILED: more than 3 High vulnerabilities."; exit 1; fi
-echo "GATE PASSED"
-```
-
-### Designing a Fair Policy
-
-Start gently and tighten. A gate that always fails gets bypassed.
-
-| Stage | Policy |
-| :--- | :--- |
-| **1. Visibility** | Report only. Learn what you have. |
-| **2. Block the worst** | Fail on **Critical**, and on anything on the **CISA KEV** list. |
-| **3. Block fixable High** | Fail on High findings that **have a fix**. |
-| **4. Mature** | Fail on **new** findings only, track old ones with deadlines, and review suppressions on a schedule. |
-
-| Principle | Reason |
-| :--- | :--- |
-| **Fixable findings first** | They are actionable now. |
-| **Known-exploited always blocks** | Active exploitation outweighs a CVSS number. |
-| **Gate on new findings in pull requests** | Developers are not blamed for old debt, but cannot add more. |
-| **Time-bound exceptions** | An exception without an expiry becomes permanent. |
-| **Scheduled rescans** | New CVEs appear daily. |
-
-### Remediation Strategies, From Best to Last Resort
-
-| # | Strategy | How |
-| :---: | :--- | :--- |
-| 1 | **Upgrade the direct dependency** to a patched version | Edit the version, run tests, rescan. |
-| 2 | **Override a transitive dependency** | Force the safe version when the parent library has not updated yet. |
-| 3 | **Replace the library** | Switch to a maintained alternative. |
-| 4 | **Remove it** | If it is unused, delete it. The best fix of all. |
-| 5 | **Use a vendor-patched build** | Some vendors backport fixes into supported versions. |
-| 6 | **Mitigate** | Disable the vulnerable feature, restrict input, block the path at the network or WAF. (Mitigations for **Log4Shell** were released before the full fix, but the real solution was upgrading.) |
-| 7 | **Accept the risk, temporarily** | Suppress with a documented reason, approver, and **expiry date**. |
-
-### Upgrading a Direct Dependency
-
-```xml
-<!-- Maven: pom.xml -->
-<dependency>
-  <groupId>org.apache.logging.log4j</groupId>
-  <artifactId>log4j-core</artifactId>
-  <version>2.24.3</version>        <!-- was 2.14.1: use the latest patched release -->
-</dependency>
-```
-
-```bash
-mvn versions:display-dependency-updates        # Maven: what could be updated?
-npm outdated && npm audit fix                  # Node
-pip list --outdated                            # Python
-```
-
-### Forcing a Safe Version of a Transitive Dependency
-
-```xml
-<!-- Maven: pin the version of a transitive dependency centrally -->
-<dependencyManagement>
-  <dependencies>
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-      <version>2.17.2</version>
-    </dependency>
-  </dependencies>
-</dependencyManagement>
-```
-
-```json
-// npm: package.json "overrides"
-{
-  "overrides": {
-    "vulnerable-lib": "1.2.5"
-  }
-}
-```
+### The Core Idea: Least Privilege at Runtime
 
 ```text
-# Python: a constraints file (use with: pip install -r requirements.txt -c constraints.txt)
-urllib3>=2.2.2
+ Default docker run                          Hardened docker run
+
+ root user (if image says so)        -->     non-root user
+ ~14 capabilities                    -->     ZERO capabilities (add back only what is needed)
+ writable root filesystem            -->     read-only filesystem
+ can gain new privileges             -->     no-new-privileges
+ unlimited memory / CPU / processes  -->     limits on all three
+ can use any port and network        -->     published on localhost only, separate networks
 ```
 
-> [!WARNING]
-> Overriding a transitive dependency can break the parent library if the new version is not compatible. **Run your tests**, and remove the override once the parent library catches up.
+### A Hardened `docker run`
 
-### Ecosystem-Native Audit Tools
+```bash
+docker run -d --name secure-app \
+  --user 10001:10001 \
+  --read-only \
+  --tmpfs /tmp \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --memory 256m \
+  --cpus 0.5 \
+  --pids-limit 100 \
+  -p 127.0.0.1:8080:8080 \
+  myapp@sha256:3f1c9a...e9
+```
 
-| Tool | Command | Notes |
+| Flag | What It Does | Attack It Limits |
 | :--- | :--- | :--- |
-| **npm** | `npm audit`, `npm audit fix` | Uses the npm advisory data |
-| **pip-audit** | `pip-audit -r requirements.txt` | Python Packaging Authority tool |
-| **govulncheck** | `govulncheck ./...` | Go: reports vulnerabilities your code **actually calls** |
-| **cargo audit** | `cargo audit` | Rust |
-| **bundler-audit** | `bundle-audit check` | Ruby |
-| **OSV-Scanner** | See its documentation | Multi-ecosystem, OSV data |
+| `--user 10001:10001` | Runs as an unprivileged user | Root-only actions inside the container |
+| `--read-only` | Makes the container's filesystem read-only | Attackers cannot drop tools or modify the app |
+| `--tmpfs /tmp` | Provides a small writable in-memory `/tmp` | Lets apps that need temporary files still work |
+| `--cap-drop ALL` | Removes every Linux capability | Network manipulation, ownership changes, and more |
+| `--security-opt no-new-privileges:true` | Blocks privilege gain through SUID binaries | Privilege escalation inside the container (Module 02) |
+| `--memory`, `--cpus`, `--pids-limit` | Resource limits | Denial of service, fork bombs |
+| `-p 127.0.0.1:8080:8080` | Publishes only on localhost | Direct exposure to the network |
+| deploy by `@sha256:...` | Exact verified image | Tag swapping |
 
-### Remediation Workflow
+### Things to Never Do (Unless You Fully Understand the Risk)
 
-```text
- 1. TRIAGE     Real? Which dependency, direct or transitive? Fix available? Exposed? Exploited?
- 2. DECIDE     Upgrade / override / replace / remove / mitigate / accept (with expiry)
- 3. FIX        Make the change on a branch. Open a pull request.
- 4. TEST       Automated tests, plus the SCA scan itself
- 5. VERIFY     Rescan: the finding is gone and nothing new and worse appeared
- 6. RELEASE    New SBOM generated and stored with the release
- 7. RECORD     Ticket updated, suppressions cleaned up, lessons captured
+| ❌ Avoid | Why |
+| :--- | :--- |
+| `--privileged` | Removes most isolation. A breakout is trivial. |
+| `-v /var/run/docker.sock:/var/run/docker.sock` | Gives the container control of the host's Docker (root-equivalent). |
+| `-v /:/host` or mounting `/etc`, `/proc`, `/sys` | Exposes the host filesystem. |
+| `--pid=host`, `--ipc=host`, `--network=host`, `--userns=host` | Shares host namespaces. |
+| `--cap-add SYS_ADMIN` | A huge, root-like capability. |
+| `--security-opt seccomp=unconfined` or `apparmor=unconfined` | Switches off syscall and MAC protection. |
+| Exposing the Docker daemon on TCP without TLS | Remote host takeover. |
+| Secrets in `-e PASSWORD=...` | Visible in `docker inspect`, process lists, and logs. |
+
+### Secrets at Runtime
+
+| Method | Assessment |
+| :--- | :--- |
+| Environment variables (`-e`, `ENV`) | ⚠️ Easy but visible through `docker inspect`, `/proc`, crash dumps, and logs |
+| **Mounted secret files** (read-only, in memory) | ✅ Better. Docker secrets, Kubernetes secrets mounted as files |
+| **A secrets manager** (HashiCorp Vault, cloud secret managers) | ✅ Best. Short-lived, audited, rotatable (Module 11) |
+| Baked into the image | ❌ Never |
+
+```bash
+# A secret as a read-only file instead of an environment variable
+docker run --rm -v "$PWD/db_password.txt:/run/secrets/db_password:ro" myapp:1.0
 ```
 
-### Example Service-Level Targets (Adapt to Your Policy)
+### Networking
 
-| Condition | Typical Target |
+| Practice | Why |
 | :--- | :--- |
-| **On the CISA KEV list** | Emergency: hours to a day |
-| **Critical, internet-facing** | Days |
-| **High, with a fix** | One to two weeks |
-| **Medium** | Within the normal release cycle |
-| **Low** | Routine maintenance |
+| Use **user-defined bridge networks** | Containers talk by name only to others on the same network. |
+| Create **internal networks** for backends (`docker network create --internal`) | No route to the internet. |
+| Publish only the ports you need, on `127.0.0.1` when possible | Smaller exposure. |
+| Avoid `--network host` | Shares the host's network stack. |
+| Remember Docker's firewall behavior | Published ports can **bypass `ufw`** rules (Module 02, section 9). Use localhost bindings and cloud firewalls. |
 
-### Measure Your Program
+```bash
+docker network create --internal backend         # no outside access
+docker network create frontend
+```
 
-| Metric | What It Shows |
+### Harden Docker Compose Too
+
+```yaml
+# docker-compose.yml
+services:
+  web:
+    image: ghcr.io/my-org/myapp@sha256:3f1c9a...e9   # by digest
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 100
+    mem_limit: 256m
+    cpus: 0.5
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+networks:
+  frontend:
+```
+
+### Protect the Docker Daemon and Host
+
+| Practice | Details |
 | :--- | :--- |
-| **Open vulnerabilities by severity** | Current exposure |
-| **Mean time to remediate** | How fast you fix |
-| **Age of oldest open High and Critical** | Neglected risk |
-| **Percentage of repos with SCA and SBOM** | Coverage |
-| **Number and age of suppressions** | Accepted risk and its hygiene |
-| **Dependencies per project** | Attack surface trend |
+| **Do not expose the daemon API** | Never bind it to TCP without mutual TLS. Prefer the local socket, or SSH. |
+| **Limit access to the `docker` group** | Membership equals root on the host. |
+| **Consider rootless Docker** | Runs the daemon and containers without host root. |
+| **Keep Docker, containerd, runc, and the kernel patched** | Runtime flaws allow breakouts. |
+| **Harden the host** | Everything in Module 02: SSH, firewall, auditing, updates. |
+| **Use a minimal container-focused OS** where possible | Fewer host packages to attack. |
+| **Run the Docker Bench for Security** | An open-source script that checks a host against the CIS Docker Benchmark. |
+
+### Monitoring and Detection
+
+| Tool or Source | What It Shows |
+| :--- | :--- |
+| `docker logs`, `docker events`, `docker stats` | Application output, lifecycle events, resource use |
+| **Host audit logs** (`auditd`, Module 02) | Who ran Docker commands and changed files |
+| **Falco** (Modules 08 and 12) | **Runtime threat detection**: alerts on suspicious behavior such as a shell spawned in a container or a sensitive file read |
+| **Central logging** (Loki, Module 12) | Searchable logs from every container |
+
+Signs worth alerting on: a **shell started inside a production container**, outbound connections to unusual destinations, a container running **as root** or **privileged** unexpectedly, new files written to a read-only application path, sudden CPU spikes (possible cryptomining).
+
+### The Same Controls in Kubernetes (Preview of Module 08)
+
+| Docker Flag | Kubernetes `securityContext` Setting |
+| :--- | :--- |
+| `--user 10001` | `runAsUser: 10001`, `runAsNonRoot: true` |
+| `--read-only` | `readOnlyRootFilesystem: true` |
+| `--cap-drop ALL` | `capabilities: { drop: ["ALL"] }` |
+| `--security-opt no-new-privileges` | `allowPrivilegeEscalation: false` |
+| default seccomp profile | `seccompProfile: { type: RuntimeDefault }` |
+| `--memory`, `--cpus` | `resources.limits.memory`, `resources.limits.cpu` |
+| `--privileged` (avoid) | `privileged: false` |
 
 ---
 
-## 12. Hands-On Labs
+## 16. Hands-On Labs
 
 > [!WARNING]
-> The lab project uses **deliberately vulnerable library versions** (including the Log4Shell-affected Log4j). Use them only for scanning. **Never run it as a service, deploy it, or publish it.**
+> All labs run on your own machine. The sample image is **deliberately insecure**: do not push it to a public registry, and do not run it on a public network. All "secrets" in the labs are **fake and generated locally**.
 
-### Lab Setup: The Sample Project
+### Lab Setup: The Sample Application
+
+Create the project files used in several labs.
 
 ```bash
-mkdir -p ~/sca-lab && cd ~/sca-lab
+mkdir -p ~/container-lab && cd ~/container-lab
 
-cat > pom.xml <<'EOF'
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>com.example</groupId>
-  <artifactId>sca-demo</artifactId>
-  <version>1.0.0</version>
-  <packaging>jar</packaging>
+cat > app.py <<'EOF'
+from flask import Flask, jsonify
 
-  <properties>
-    <maven.compiler.source>17</maven.compiler.source>
-    <maven.compiler.target>17</maven.compiler.target>
-  </properties>
+app = Flask(__name__)
 
-  <dependencies>
-    <!-- DELIBERATELY OLD AND VULNERABLE: for scanning practice only -->
-    <dependency>
-      <groupId>org.apache.logging.log4j</groupId>
-      <artifactId>log4j-core</artifactId>
-      <version>2.14.1</version>
-    </dependency>
-    <dependency>
-      <groupId>commons-collections</groupId>
-      <artifactId>commons-collections</artifactId>
-      <version>3.2.1</version>
-    </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-      <version>2.9.10</version>
-    </dependency>
-  </dependencies>
-</project>
+@app.route("/")
+def index():
+    return "Hello from a container!"
+
+@app.route("/health")
+def health():
+    return jsonify(status="ok")
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
 EOF
 
-# Save secrets/keys policy: never commit the NVD key
-echo -e "odc-data/\nodc-reports/\nlibs/\n.env" > .gitignore
+# OLD, vulnerable dependencies (for the insecure image)
+cat > requirements-old.txt <<'EOF'
+flask==2.0.1
+werkzeug==2.0.1
+jinja2==3.0.1
+itsdangerous==2.0.1
+markupsafe==2.0.1
+click==8.0.1
+requests==2.25.0
+EOF
+
+# Newer dependencies (for the hardened image)
+cat > requirements.txt <<'EOF'
+flask==3.1.1
+requests==2.32.4
+gunicorn==23.0.0
+EOF
+
+# A fake secret file that "accidentally" ends up in the image
+FAKE_TOKEN="ghp_$(head -c 300 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 36)"
+printf 'GITHUB_TOKEN=%s\nDB_PASSWORD=change-me\n' "$FAKE_TOKEN" > .env
+
+# The INSECURE Dockerfile
+cat > Dockerfile.insecure <<'EOF'
+FROM python:3.8
+ENV API_KEY=not-a-real-key-demo-123
+WORKDIR /app
+COPY . .
+RUN pip install -r requirements-old.txt
+EXPOSE 5000
+CMD ["python", "app.py"]
+EOF
+
+ls -la
 ```
 
 > [!NOTE]
-> Results depend on the date you run the labs, because vulnerability data changes daily. Focus on **how the findings change** as you fix things, not on matching exact numbers.
+> Exact vulnerability counts depend on when you run the labs, because the vulnerability database changes daily. Focus on **how the numbers change**, not on matching the examples.
 
-### Lab 1: Explore Direct and Transitive Dependencies
+### Lab 1: Explore Container Risks
 
-**Objective:** See what you really depend on.
+**Objective:** See with your own eyes why default settings and bad habits are dangerous.
 
 **Tasks:**
 
 ```bash
-cd ~/sca-lab
-
-# 1. Show the dependency tree
-docker run --rm -v "$PWD":/app -w /app maven:3.9-eclipse-temurin-17 mvn -B dependency:tree
-
-# 2. Copy the resolved libraries into ./libs
-docker run --rm -v "$PWD":/app -w /app maven:3.9-eclipse-temurin-17 \
-  mvn -q -B dependency:copy-dependencies -DoutputDirectory=libs
-
-ls -1 libs
+cd ~/container-lab
+docker build -f Dockerfile.insecure -t insecure-app:1.0 .
 ```
+
+**Part A: Who am I inside the container?**
+
+```bash
+docker run --rm insecure-app:1.0 id
+```
+
+Expected: `uid=0(root)`. The application runs as **root**.
+
+**Part B: What can anyone with the image see?**
+
+```bash
+docker history --no-trunc insecure-app:1.0 | grep -i API_KEY            # the ENV value is in the history
+docker inspect insecure-app:1.0 --format '{{json .Config.Env}}'          # and in the metadata
+docker run --rm insecure-app:1.0 cat /app/.env                            # the copied .env file is in the image
+```
+
+**Part C: The Docker socket is root.**
+
+```bash
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock docker:cli docker ps
+```
+
+A container that can see **the host's other containers** can also start new ones.
+
+**Part D: A host mount reaches the host.**
+
+```bash
+docker run --rm -v /:/host:ro alpine cat /host/etc/os-release
+```
+
+The container just read a file from your **host's** filesystem. (Read-only here, and harmless, but a writable mount would allow changes.)
 
 Fill in the table:
 
 | Question | Your Answer |
 | :--- | :--- |
-| How many dependencies did you **declare** in `pom.xml`? | |
-| How many JAR files are in `libs/`? | |
-| Which libraries are **transitive**? | |
-| Which direct dependency pulled in each transitive one? | |
-| Why does this matter for vulnerability scanning? | |
+| Which user did the app run as? | |
+| Where can an attacker find the `API_KEY` without running the container? | |
+| Why was `.env` in the image? | |
+| What does Part C prove about the Docker socket? | |
+| Which four settings from section 15 would limit this? | |
 
-**Optional:** do the same for a Python or Node project you have (`pipdeptree` or `npm ls --all`).
+**Expected outcome:** You can explain, with evidence, why root users, secrets in images, the Docker socket, and host mounts are dangerous.
 
-**Expected outcome:** You declared **3** dependencies but ship **more** JARs. You can point to each transitive dependency and its parent.
+### Lab 2: Write a Secure Dockerfile
 
-### Lab 2: Research a CVE and Decode CVSS
-
-**Objective:** Learn to read vulnerability data.
-
-**Tasks:** Using a browser, research **CVE-2021-44228** (Log4Shell):
-
-1. Open its record on the **NVD**. Note the description, CWE, affected versions, and fixed versions.
-2. Write down the **CVSS v3.1 vector** and decode each metric using section 3.
-3. Search the **CISA KEV catalog**. Is it listed?
-4. Look up its **EPSS** score.
-5. Open the same CVE in the **GitHub Advisory Database**. Compare its data to the NVD.
-
-| Question | Your Answer |
-| :--- | :--- |
-| CVSS score and vector | |
-| What does `AV:N` and `PR:N` mean for an attacker? | |
-| Weakness type (CWE) | |
-| On the KEV list? | |
-| EPSS probability | |
-| Lowest fixed version you can find | |
-| Why would this need an **emergency** response even without a CVSS number? | |
-
-**Expected outcome:** You can explain, from the vector alone, why Log4Shell scored 10.0 and why KEV and EPSS add information that CVSS lacks.
-
-### Lab 3: Scan With Dependency-Check
-
-**Objective:** Run a full scan and read the reports.
+**Objective:** Build a hardened image and compare it with the insecure one.
 
 **Tasks:**
 
-1. Get a free **NVD API key** (section 5) and store it safely:
+1. Create the hardened Dockerfile and `.dockerignore`:
 
 ```bash
-read -rs NVD_API_KEY ; export NVD_API_KEY
+cd ~/container-lab
+
+cat > .dockerignore <<'EOF'
+.git
+.env
+.env.*
+*.pem
+*.key
+requirements-old.txt
+Dockerfile*
+__pycache__
+*.pyc
+EOF
+
+cat > Dockerfile <<'EOF'
+# syntax=docker/dockerfile:1
+FROM python:3.12-slim AS builder
+WORKDIR /build
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+COPY requirements.txt .
+RUN python -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.txt
+
+FROM python:3.12-slim
+RUN groupadd --gid 10001 app \
+ && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin app
+WORKDIR /app
+COPY --from=builder /opt/venv /opt/venv
+COPY --chown=app:app app.py .
+ENV PATH="/opt/venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+USER 10001:10001
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+EOF
 ```
 
-2. Choose a verified Dependency-Check release and pin it:
+2. Lint both Dockerfiles and compare the messages:
 
 ```bash
-export ODC_VERSION="<verified release>"
-docker pull owasp/dependency-check:${ODC_VERSION}
+docker run --rm -i hadolint/hadolint < Dockerfile.insecure
+docker run --rm -i hadolint/hadolint < Dockerfile
 ```
 
-3. Run the scan (the first run downloads the database, so be patient):
+3. Build and test:
 
 ```bash
-cd ~/sca-lab
-mkdir -p odc-data odc-reports
-docker run --rm -u "$(id -u):$(id -g)" \
-  -v "$PWD:/src:z" -v "$PWD/odc-data:/usr/share/dependency-check/data:z" -v "$PWD/odc-reports:/report:z" \
-  owasp/dependency-check:${ODC_VERSION} \
-    --scan /src/libs --project sca-demo --format ALL --out /report --nvdApiKey "$NVD_API_KEY"
+docker build -t hardened-app:1.0 .
+docker run -d --name hardened -p 127.0.0.1:8080:8080 hardened-app:1.0
+sleep 3 && curl -s http://localhost:8080/health ; echo
+docker rm -f hardened
 ```
 
-4. Open `odc-reports/dependency-check-report.html`. Answer:
-
-| Question | Your Answer |
-| :--- | :--- |
-| Dependencies scanned | |
-| Vulnerable dependencies | |
-| Total vulnerabilities | |
-| Highest severity found, and in which library | |
-| Which finding is Log4Shell, and what is its score? | |
-| What is the **confidence** for that finding? | |
-
-5. Use `jq` on the JSON report:
+4. Compare the two images:
 
 ```bash
-R=odc-reports/dependency-check-report.json
-jq -r '.dependencies[] | select(.vulnerabilities) | "\(.fileName): \([.vulnerabilities[].name] | join(", "))"' $R
-jq -r '[.dependencies[].vulnerabilities[]?] | group_by(.severity) | map("\(.[0].severity): \(length)") | .[]' $R
+docker images | grep -E "insecure-app|hardened-app"        # size
+docker run --rm insecure-app:1.0 id
+docker run --rm hardened-app:1.0 id
+docker run --rm hardened-app:1.0 ls -la /app                # no .env, no extra files
+docker history --no-trunc hardened-app:1.0 | grep -ci "api_key" || echo "No API_KEY in history"
 ```
 
-6. Run it again and note how much faster the second run is (the cached database).
+| Property | insecure-app | hardened-app |
+| :--- | :--- | :--- |
+| Image size | | |
+| Running user | | |
+| `.env` file present? | | |
+| Secret visible in history? | | |
+| Has a `HEALTHCHECK`? | | |
 
-**Expected outcome:** Several vulnerable dependencies, including **log4j-core** with a Critical finding. You can explain every column of the report.
+**Expected outcome:** The hardened image is **much smaller**, runs as UID 10001, contains no `.env` file or secret, and still works. You can map each improvement to a rule in section 4.
 
-### Lab 4: Triage, Suppress, and Gate
+### Lab 3: Scan With Trivy
 
-**Objective:** Make a pass or fail decision and document an exception.
+**Objective:** Install Trivy safely and scan images, files, and the Dockerfile.
 
 **Tasks:**
 
-1. Run the scan with a gate and check the exit code:
+1. Install Trivy following section 7 (**pinned, checksum-verified**). Confirm with `trivy --version`.
+2. Scan both images:
 
 ```bash
-docker run --rm -u "$(id -u):$(id -g)" \
-  -v "$PWD:/src:z" -v "$PWD/odc-data:/usr/share/dependency-check/data:z" -v "$PWD/odc-reports:/report:z" \
-  owasp/dependency-check:${ODC_VERSION} \
-    --scan /src/libs --format JSON --out /report --nvdApiKey "$NVD_API_KEY" --failOnCVSS 7
-echo "Exit code: $?"
+cd ~/container-lab
+trivy image insecure-app:1.0 | head -60
+trivy image --severity HIGH,CRITICAL --ignore-unfixed insecure-app:1.0 | tail -40
+trivy image --severity HIGH,CRITICAL --ignore-unfixed hardened-app:1.0
 ```
 
-2. Choose **one** finding from the HTML report and **investigate** it: read the CVE, decide whether it truly applies. (For the lab, treat a finding on an unrelated module as your "verified false positive" exercise, and practice the mechanics.)
-3. Click **suppress** on that finding in the HTML report to see the generated XML. Create `.sca/suppressions.xml` (section 5 format) with a **reason**, **ticket**, and an **`until`** date.
-4. Re-run with `--suppression /src/.sca/suppressions.xml`. Confirm the **suppressed count** increased.
-5. Run `sca-gate.sh` from section 11 against the JSON report.
-
-**Expected outcome:** The gate **fails** (non-zero exit code) before fixes. The suppression reduces the count, and you can explain why a suppression needs a reason, a narrow scope, and an expiry date.
-
-### Lab 5: Remediate the Vulnerabilities
-
-**Objective:** Fix findings and prove it by rescanning.
-
-**Tasks:**
-
-1. Update `pom.xml`:
-   - `log4j-core` to a patched release (for example `2.24.3`).
-   - `commons-collections` to `3.2.2`.
-   - `jackson-databind` to a current patched release (for example `2.17.2`).
-2. Rebuild `libs/` and rescan:
+3. Record counts using JSON:
 
 ```bash
-rm -rf libs odc-reports/*
-docker run --rm -v "$PWD":/app -w /app maven:3.9-eclipse-temurin-17 \
-  mvn -q -B dependency:copy-dependencies -DoutputDirectory=libs
-
-docker run --rm -u "$(id -u):$(id -g)" \
-  -v "$PWD:/src:z" -v "$PWD/odc-data:/usr/share/dependency-check/data:z" -v "$PWD/odc-reports:/report:z" \
-  owasp/dependency-check:${ODC_VERSION} \
-    --scan /src/libs --format ALL --out /report --nvdApiKey "$NVD_API_KEY" --failOnCVSS 7
-echo "Exit code: $?"
-```
-
-3. Compare before and after:
-
-| | Before | After |
-| :--- | :---: | :---: |
-| Vulnerable dependencies | | |
-| Critical | | |
-| High | | |
-| Gate exit code | | |
-
-4. If something remains, decide: upgrade further, override a transitive dependency (section 11), or accept with an expiry.
-5. **Optional:** use a `dependencyManagement` block to force a newer `jackson-databind` while leaving the declared version older, and observe the dependency tree change.
-
-**Expected outcome:** Critical and High findings drop sharply or disappear, and the gate passes (or fails only on findings you can explain). You can describe each remediation strategy you used.
-
-### Lab 6: Generate and Inspect SBOMs With Syft
-
-**Objective:** Produce SBOMs in both standard formats and use them.
-
-**Tasks:**
-
-1. Install Syft following section 8 (**pinned and checksum-verified**).
-2. Generate the SBOMs for the **fixed** project and, for comparison, the original vulnerable versions (rename `libs` first, or rebuild):
-
-```bash
-cd ~/sca-lab
-mkdir -p sboms
-syft dir:./libs --source-name sca-demo --source-version 1.1.0 \
-  -o cyclonedx-json=sboms/sca-demo-1.1.0.cdx.json \
-  -o spdx-json=sboms/sca-demo-1.1.0.spdx.json
-```
-
-3. Inspect:
-
-```bash
-jq '.components | length' sboms/sca-demo-1.1.0.cdx.json
-jq -r '.components[] | "\(.name)  \(.version)  \(.purl)"' sboms/sca-demo-1.1.0.cdx.json | sort
-jq '.packages | length' sboms/sca-demo-1.1.0.spdx.json
-```
-
-4. Verify the **minimum elements** from section 6 are present (supplier or author, name, version, identifiers, relationships, tool, timestamp). Which are missing in your SBOM, if any?
-5. Create a second SBOM from the **old** vulnerable `pom.xml` (version `1.0.0`) and save it in `sboms/`. Then run the "Where is log4j?" search across both:
-
-```bash
-for f in sboms/*.cdx.json; do
-  jq -r --arg f "$f" '.components[]? | select(.name|test("log4j")) | "\($f)  \(.name)  \(.version)"' "$f"
+for img in insecure-app hardened-app; do
+  trivy image --format json -o $img.json $img:1.0 >/dev/null 2>&1
+  echo "== $img"
+  jq -r '[.Results[]?.Vulnerabilities[]?] | group_by(.Severity) | map("\(.[0].Severity): \(length)") | .[]' $img.json
 done
 ```
 
-6. Compare CycloneDX and SPDX for the same component. Which fields correspond (section 7)?
-
-**Expected outcome:** Two valid SBOM files per version, each listing the same libraries. The search immediately shows which version of log4j each release contains. You can explain why storing SBOMs per release answers "are we affected?" quickly.
-
-### Lab 7: Scan the SBOM and Compare Tools
-
-**Objective:** Use the SBOM as the input for vulnerability scanning, and compare tool results.
-
-**Tasks:**
+4. Find the leaked secret and misconfigurations:
 
 ```bash
-cd ~/sca-lab
-
-# Trivy (Module 07)
-trivy sbom sboms/sca-demo-1.0.0.cdx.json
-
-# Grype (optional): install the same careful way as Syft
-grype sbom:./sboms/sca-demo-1.0.0.cdx.json
+trivy image --scanners secret insecure-app:1.0         # should flag the token from .env
+trivy image --scanners secret hardened-app:1.0         # should be clean
+trivy config --file-patterns "dockerfile:Dockerfile.insecure" .
+trivy config .                                           # scans the real Dockerfile
 ```
 
-Compare with the Dependency-Check results for the **vulnerable** version:
+5. Test the gate:
 
-| Question | Dependency-Check | Trivy or Grype |
+```bash
+trivy image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed insecure-app:1.0 ; echo "Exit code: $?"
+trivy image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed hardened-app:1.0 ; echo "Exit code: $?"
+```
+
+Fill in:
+
+| Question | insecure-app | hardened-app |
 | :--- | :--- | :--- |
-| Total findings | | |
-| Critical and High count | | |
-| Is Log4Shell found? | | |
-| Any finding **only one tool** reports? | | |
-| Likely reason for the difference (data source, matching method) | | |
+| Total CRITICAL | | |
+| Total HIGH | | |
+| Secret found? | | |
+| Gate exit code | | |
 
-**Expected outcome:** The tools agree on the **serious, well-known** issues (such as Log4Shell) and differ on the rest. You can explain that results depend on data sources and matching methods, and why running two tools on critical projects is useful.
+**Expected outcome:** The insecure image has many more findings, a detected secret, and a failing gate (exit code 1). The hardened image has far fewer findings and no secret. (If the hardened image still triggers the gate, triage the remaining findings as practiced in Lab 4.)
 
-### Lab 8: Dependabot and Dependency Review
+### Lab 4: Remediate Step by Step
 
-**Objective:** Use GitHub's automatic dependency protection.
+**Objective:** Reduce vulnerabilities in measured steps and prove it.
 
-> [!NOTE]
-> Use a **test repository**. Dependabot alerts and updates work for private and public repositories. Dependency review for private repositories depends on your plan.
+**Tasks:** Build three intermediate images from the insecure Dockerfile and record the counts after each step.
+
+**Step A: Slim base only** (still old Python and old libraries):
+
+```bash
+cd ~/container-lab
+sed 's/^FROM python:3.8$/FROM python:3.8-slim/' Dockerfile.insecure > Dockerfile.stepA
+docker build -f Dockerfile.stepA -t stepa-app:1.0 .
+```
+
+**Step B: Modern Python and updated dependencies** (but still root and still copying everything):
+
+```bash
+cat > Dockerfile.stepB <<'EOF'
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt app.py ./
+RUN pip install --no-cache-dir -r requirements.txt
+EXPOSE 8080
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+EOF
+docker build -f Dockerfile.stepB -t stepb-app:1.0 .
+```
+
+**Step C:** the final hardened image from Lab 2 (`hardened-app:1.0`).
+
+Scan all four and fill the table:
+
+```bash
+for img in insecure-app stepa-app stepb-app hardened-app; do
+  trivy image --format json -o $img.json --quiet $img:1.0
+  echo "== $img  $(docker images --format '{{.Size}}' $img:1.0)"
+  jq -r '[.Results[]?.Vulnerabilities[]?] | group_by(.Severity) | map("\(.[0].Severity): \(length)") | .[]' $img.json
+done
+```
+
+| Image | Change | Size | CRITICAL | HIGH |
+| :--- | :--- | :--- | :--- | :--- |
+| insecure-app | `python:3.8`, old libs, root | | | |
+| stepa-app | slim base | | | |
+| stepb-app | Python 3.12 slim, new libs | | | |
+| hardened-app | multi-stage, non-root, `.dockerignore` | | | |
+
+**Handle what remains:**
+
+1. List fixable serious issues in the final image with the `jq` recipe from section 9.
+2. For one finding that has **no fix**, decide whether to mitigate or accept it, and write it in `.trivyignore` with a **reason and an expiry date**:
+
+```bash
+cat > .trivyignore <<'EOF'
+# <CVE-ID> : <reason>. Approved by: <name>. Review by the expiry date.
+# CVE-0000-00000 exp:2026-12-31
+EOF
+```
+
+3. Re-run the gate command and confirm the result.
+
+**Expected outcome:** The counts fall at each step, with the largest drops from changing the base image and updating dependencies. You can explain why each step helped and which one matters most.
+
+### Lab 5: Generate and Inspect an SBOM
+
+**Objective:** Produce an image SBOM, inspect it, and rescan it.
 
 **Tasks:**
 
-1. Push the **vulnerable** `pom.xml` (version `1.0.0`) to a new repository on `main`.
-2. Enable **Dependency graph**, **Dependabot alerts**, and **Dependabot security updates** (Settings → Advanced Security).
-3. Wait a few minutes. Open **Security → Dependabot**. For the Log4j alert, record: severity, vulnerable range, patched version, and direct or transitive.
-4. Look for a Dependabot **security update pull request**. Review it as described in section 9: CI, release notes, size of change.
-5. Add `.github/dependabot.yml` with the Maven, `docker`, and `github-actions` ecosystems, a `groups` entry, and a `cooldown` (if available to you).
-6. Add the **dependency review** workflow. Create a branch that **adds** a vulnerable dependency (for example, an old `commons-text` version), open a pull request, and watch the check fail.
-7. Export the repository SBOM from **Insights → Dependency graph → Export SBOM**, and compare it to the Syft SBOM from Lab 6.
+```bash
+cd ~/container-lab
 
-**Expected outcome:** Alerts appear, a fix pull request is proposed, the dependency review check **blocks** the pull request that adds a vulnerable dependency, and you can compare GitHub's SBOM with the Syft one.
+# 1. Generate CycloneDX and SPDX SBOMs
+trivy image --format cyclonedx --output sbom.cdx.json  hardened-app:1.0
+trivy image --format spdx-json  --output sbom.spdx.json hardened-app:1.0
 
-### Lab 9: SCA in GitHub Actions and Jenkins
+# 2. Inspect
+jq '.components | length' sbom.cdx.json
+jq -r '.components[] | "\(.name)  \(.version)"' sbom.cdx.json | sort | head -25
+jq -r '.components[] | select(.name=="flask" or .name=="requests") | "\(.name) \(.version)"' sbom.cdx.json
 
-**Objective:** Automate the scan, the SBOM, and the gate.
+# 3. Scan the SBOM (no image needed)
+trivy sbom sbom.cdx.json --severity HIGH,CRITICAL --ignore-unfixed
+```
 
-**GitHub Actions tasks:**
-
-1. In your test repository (with the **vulnerable** `pom.xml`), add `.github/workflows/sca.yml` from section 10.
-2. Add the **secret** `NVD_API_KEY` and the **variables** `ODC_VERSION` and `SYFT_VERSION` (verified releases).
-3. Push and watch the **Dependency-Check** step **fail** on `--failOnCVSS 7`. Download the `sca-reports` artifact and open the HTML report and SBOMs. (The first run downloads the database and may take a while.)
-4. Fix the dependencies (Lab 5), push, and confirm the workflow **passes**.
-5. Make the **SCA** and **Dependency Review** checks **required** for `main`.
-
-**Jenkins tasks (optional):**
-
-1. Use a Jenkins agent with Docker. Add credential `nvd-api-key` (secret text).
-2. Add the `Jenkinsfile` from section 10 with pinned versions, create a Pipeline job from SCM, and run it with the vulnerable and fixed projects.
-3. Confirm the SCA stage **fails** then **passes**, and the SBOM artifacts are archived.
-
-**Expected outcome:** A vulnerable dependency set is **blocked** in the pipeline, and a fixed one passes, with the reports and SBOMs saved as artifacts. You can explain why the workflow runs daily as well as on every change.
-
-### Cleanup
+4. **Optional:** install Syft (verified download) and compare:
 
 ```bash
-unset NVD_API_KEY
-rm -rf ~/sca-lab/libs
-# Keep (or securely delete) odc-data. It is only a vulnerability database cache.
+syft hardened-app:1.0 -o cyclonedx-json=sbom.syft.cdx.json
+jq '.components | length' sbom.syft.cdx.json
+```
+
+5. Answer: *"An organization announces a critical flaw in `requests` below version 2.32.4. How would you find every image you have that contains `requests`, using stored SBOMs?"*
+
+**Expected outcome:** You can produce and read an SBOM, scan it, and explain how SBOM storage lets you answer "where is this component?" quickly.
+
+### Lab 6: Sign and Verify With Cosign
+
+**Objective:** Sign an image in a local registry, verify it, and watch verification catch tampering.
+
+> [!NOTE]
+> This lab uses **key-based** signing with a **local registry**. Keyless signing needs an internet identity provider, so you will practice it in the GitHub Actions lab. Install Cosign v3 following section 11. If a flag is not recognized by your version, check `cosign sign --help`.
+
+**Tasks:**
+
+```bash
+cd ~/container-lab
+
+# 1. A local registry, reachable only from your machine
+docker run -d --name registry -p 127.0.0.1:5000:5000 registry:2
+
+# 2. Tag and push the hardened image
+docker tag hardened-app:1.0 localhost:5000/hardened-app:1.0
+docker push localhost:5000/hardened-app:1.0
+
+# 3. Get the digest (the immutable identity)
+DIGEST_REF="$(docker inspect --format '{{index .RepoDigests 0}}' localhost:5000/hardened-app:1.0)"
+echo "$DIGEST_REF"
+
+# 4. Create a key pair (choose a password). Keep cosign.key OUT of Git!
+cosign generate-key-pair
+echo "cosign.key" >> .gitignore
+
+# 5. Sign the DIGEST (no public transparency log for this private lab image)
+read -rs COSIGN_PASSWORD ; export COSIGN_PASSWORD
+cosign sign --yes --key cosign.key --tlog-upload=false "$DIGEST_REF"
+
+# 6. Verify
+cosign verify --key cosign.pub --insecure-ignore-tlog=true "$DIGEST_REF"
+echo "Verify exit code: $?"
+
+# 7. See what is attached
+cosign tree "$DIGEST_REF"
+```
+
+**The tamper test:**
+
+```bash
+# 8. An "attacker" builds a DIFFERENT image and overwrites the same tag
+cat > Dockerfile.evil <<'EOF'
+FROM python:3.12-slim
+CMD ["python", "-c", "print('malicious')"]
+EOF
+docker build -f Dockerfile.evil -t localhost:5000/hardened-app:1.0 .
+docker push localhost:5000/hardened-app:1.0
+
+# 9. Verify the TAG again
+cosign verify --key cosign.pub --insecure-ignore-tlog=true localhost:5000/hardened-app:1.0
+echo "Verify exit code: $?"          # NON-ZERO: the new content was never signed
+
+# 10. Verify the ORIGINAL digest: still valid
+cosign verify --key cosign.pub --insecure-ignore-tlog=true "$DIGEST_REF"
+```
+
+**Optional: attach and verify an SBOM attestation:**
+
+```bash
+cosign attest --yes --key cosign.key --tlog-upload=false --type cyclonedx \
+  --predicate sbom.cdx.json "$DIGEST_REF"
+cosign verify-attestation --key cosign.pub --insecure-ignore-tlog=true --type cyclonedx "$DIGEST_REF" > /dev/null && echo "Attestation OK"
+```
+
+**Cleanup:**
+
+```bash
+docker rm -f registry
+```
+
+**Expected outcome:** Verification **passes** for the signed digest and **fails** for the overwritten tag, and the original digest still verifies. You can explain why signing digests defeats tag tampering and why `cosign.key` must never be committed.
+
+### Lab 7: Runtime Hardening
+
+**Objective:** Run the image with least privilege and prove the restrictions work.
+
+**Tasks:**
+
+```bash
+cd ~/container-lab
+
+# 1. Run hardened
+docker run -d --name secure-app \
+  --read-only --tmpfs /tmp \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --memory 256m --cpus 0.5 --pids-limit 100 \
+  -p 127.0.0.1:8080:8080 \
+  hardened-app:1.0
+
+sleep 3
+curl -s http://localhost:8080/health ; echo
+
+# 2. Prove the filesystem is read-only
+docker exec secure-app sh -c 'touch /app/pwned' ; echo "Exit code: $?"      # fails: Read-only file system
+
+# 3. Prove the user and settings
+docker exec secure-app id
+docker inspect --format 'ReadOnly={{.HostConfig.ReadonlyRootfs}} CapDrop={{.HostConfig.CapDrop}} SecurityOpt={{.HostConfig.SecurityOpt}} Memory={{.HostConfig.Memory}}' secure-app
+docker stats --no-stream secure-app
+
+# 4. Compare capabilities: default vs privileged vs dropped
+docker run --rm alpine sh -c 'grep CapEff /proc/self/status'
+docker run --rm --privileged alpine sh -c 'grep CapEff /proc/self/status'
+docker run --rm --cap-drop ALL alpine sh -c 'grep CapEff /proc/self/status'
+
+# 5. Decode the capability numbers on your host (Module 02)
+#    capsh --decode=<value>
+
+docker rm -f secure-app
+```
+
+6. Write the same settings as a `docker-compose.yml` using the example in section 15, run `docker compose up -d`, and confirm it works.
+7. **Optional:** run the **Docker Bench for Security** script on a test machine and note three findings.
+
+**Expected outcome:** The write attempt fails, the app still serves requests, and the three capability values show clearly different privilege levels (`--privileged` having the most, `--cap-drop ALL` the least).
+
+### Lab 8: Container Security in GitHub Actions
+
+**Objective:** Build, scan, gate, push, sign, and verify an image in a pipeline.
+
+> [!NOTE]
+> Use a **test repository**. Pushing to GHCR needs the `packages: write` permission in the workflow (already included). Make the repository private or public as you prefer, but it contains only the sample app.
+
+**Tasks:**
+
+1. Push the project files to a repository: `app.py`, `requirements.txt`, the **hardened** `Dockerfile` as `Dockerfile`, and `.dockerignore`. Do **not** commit `.env`, `cosign.key`, or the insecure files.
+2. Add `.github/workflows/container-security.yml` from section 14. Choose a Trivy release you have verified and set `TRIVY_VERSION`.
+3. Pin `actions/checkout`, `actions/upload-artifact`, and `sigstore/cosign-installer` to **full commit SHAs** and add a Dependabot entry for `github-actions`.
+4. **Break it on purpose:** in a branch, change the `Dockerfile` back to the insecure version (`python:3.8`, old requirements, no `USER`), open a pull request, and watch the **scan fail** and block the job. Download the report artifact.
+5. Merge the **hardened** version to `main`. Watch the image get pushed, signed, and verified.
+6. On your machine, verify the signature yourself:
+
+```bash
+cosign verify ghcr.io/<owner>/<repo>@sha256:<digest> \
+  --certificate-identity "https://github.com/<owner>/<repo>/.github/workflows/container-security.yml@refs/heads/main" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+7. Try a **wrong identity** (for example, a different workflow filename) and confirm verification fails.
+8. Make the **Container Security** check required for `main` (Module 03, section 4.5).
+
+**Expected outcome:** The insecure pull request is blocked by the scan, the hardened build is pushed and signed, your local verification passes with the correct identity and fails with a wrong one.
+
+### Lab 9: Container Security in Jenkins
+
+**Objective:** Add the same security stages to a Jenkins pipeline.
+
+**Tasks:**
+
+1. Use a Jenkins agent with Docker. Install a verified Cosign on the agent.
+2. For a lab registry, run the local registry reachable from the agent, or use a registry you control.
+3. Add Jenkins credentials: `registry-creds` (username and password), `cosign-key` (secret file), `cosign-password` (secret text), and `cosign-pub` (secret file).
+4. Add the `Jenkinsfile` from section 14 and create a Pipeline job from SCM.
+5. Run it with the **insecure** Dockerfile and confirm the **Scan** stage fails and **Push** and **Sign** do not run.
+6. Switch to the hardened Dockerfile. Confirm Scan passes, the image is pushed, signed, and verified.
+7. Download the archived `trivy-report.json` and `sbom.cdx.json`.
+
+**Expected outcome:** A failing scan stops the pipeline before the push, and a passing build ends with a signed image whose signature the pipeline verifies. You can explain why the scan runs on a tar file instead of the Docker socket.
+
+### Final Cleanup
+
+```bash
+docker rm -f registry secure-app hardened 2>/dev/null
+docker rmi insecure-app:1.0 stepa-app:1.0 stepb-app:1.0 2>/dev/null
+rm -f ~/container-lab/.env ~/container-lab/cosign.key
 ```
 
 ---
 
-## 13. Best Practices
+## 17. Best Practices
 
-### Know and Control Your Dependencies
-
-| Practice | Why |
-| :--- | :--- |
-| **Keep the dependency count small** | Every library is attack surface and maintenance work. |
-| **Commit lock files; install strictly** (`npm ci`, pinned versions) | Reproducible, reviewable builds. |
-| **Review new dependencies** (maintainers, activity, license, alternatives) | Avoids abandoned and suspicious packages. |
-| **Double-check names** | Defeats typosquatting. |
-| **Use a private proxy or registry and scoped names** | One controlled entry point, defeats dependency confusion. |
-| **Pin versions and hashes where possible** | Tampered packages fail to install. |
-| **Delay adopting brand-new releases** (cooldowns) | Malicious releases are often caught quickly. |
-| **Remove unused dependencies** | Less to patch. |
-| **Do not rely on `latest` or open-ended ranges** in production builds | Unpredictable and risky. |
-
-### Scan and Monitor
+### Build
 
 | Practice | Why |
 | :--- | :--- |
-| **Scan every pull request and every build** | Catch problems before merge. |
-| **Rescan on a schedule** (daily) | New CVEs appear after release. |
-| **Use two tools on critical projects** | Different data and methods, so you catch more. |
-| **Scan the built artifact**, not only manifests | Reflects what really ships. |
-| **Keep the Dependency-Check database cached; use an NVD API key** | Faster and reliable. |
-| **Track findings in one place** (Dependency-Track, a ticket system) | Ownership and visibility. |
+| Use **minimal, current, trusted** base images | Smaller attack surface, fewer CVEs. |
+| **Pin base images by digest** and update them through reviewed pull requests | Reproducible, controlled changes. |
+| **Multi-stage builds** | No build tools in the final image. |
+| **Non-root numeric `USER`** | Limits compromise impact and enables policy checks. |
+| **`.dockerignore`**, copy only what is needed | No accidental secrets or junk. |
+| **No secrets in `ENV`, `ARG`, or layers**. Use BuildKit secrets | Image history is permanent. |
+| **Pin dependencies**, use lock files | Reviewable, reproducible. |
+| **Lint** (Hadolint, `trivy config`) | Catches mistakes before the build. |
 
-### SBOM Hygiene
-
-| Practice | Why |
-| :--- | :--- |
-| **Generate an SBOM for every release** | Evidence of what shipped. |
-| **Produce both CycloneDX and SPDX if needed** | Meets different consumers. |
-| **Generate from the final artifact** | Accurate, includes OS packages in images. |
-| **Name and version the SBOM subject** | Searchable and traceable. |
-| **Store SBOMs with the release and sign them** | Integrity (Module 07). |
-| **Validate SBOMs in CI** | Catch missing or malformed data. |
-| **Re-scan stored SBOMs regularly** | Continuous monitoring without rebuilding. |
-| **Pair with VEX when you can** | Reduces false alarms for consumers. |
-
-### Prioritize and Fix
+### Scan, Track, and Fix
 
 | Practice | Why |
 | :--- | :--- |
-| **Prioritize by KEV, EPSS, exposure, and fix availability, not CVSS alone** | Effort goes where the risk is. |
-| **Fix fixable High and Critical first** | Actionable and valuable. |
-| **Prefer upgrade over suppress** | Suppression leaves the risk in place. |
-| **Test after every upgrade** | Updates can break behavior. |
-| **Rescan to verify** | A fix is not done until proven. |
-| **Give every exception a reason, owner, and expiry** | Accepted risk must be deliberate and temporary. |
-| **Protect suppression files and gate configuration** (CODEOWNERS) | They are a way to bypass the gate. |
+| **Scan every build** and fail on fixable HIGH and CRITICAL | A consistent, fair gate. |
+| **Scan before pushing** | Bad images never reach the registry. |
+| **Rescan registry and running images regularly** | New CVEs appear daily. |
+| **Rebuild on a schedule** | Picks up patched base images. |
+| **Generate and store SBOMs** | Instant "where is component X?" answers. |
+| **Prioritize by risk** (fix available, exploited, exposed) | Effort goes where it matters. |
+| **Document every exception** with reason and expiry | Accepted risk is deliberate and temporary. |
+| **Protect `.trivyignore`** with CODEOWNERS | It is a way to bypass the gate. |
 
-### Automate Safely
+### Distribute and Trust
 
 | Practice | Why |
 | :--- | :--- |
-| **Use Dependabot version updates with grouping and cooldowns** | Keeps you current with less noise and less risk. |
-| **Treat Dependabot pull requests as code to review** | They change what you ship. |
-| **Require the dependency review check on pull requests** | Stops vulnerable additions. |
-| **Pin tool versions and GitHub Actions to commit SHAs; verify downloads** | Security tools are part of the supply chain (Module 07). |
-| **Keep the NVD key and tokens in secrets** | Never in code or logs (Module 03). |
-| **Least-privilege workflow permissions** | Limits the damage of a compromised step. |
+| **Sign** images and **verify** before deploy | Integrity and origin. |
+| **Prefer keyless signing** in CI with pinned verification identity | No long-lived key to steal. |
+| **Sign and deploy by digest** | Tags can be moved. |
+| **Attach SBOM and scan attestations** | Policies can require them. |
+| **Private registries, least-privilege tokens, immutable tags** | Reduces registry abuse. |
+| **Use trusted image sources**, check names for typosquatting | Avoids malicious images. |
+
+### Run
+
+| Practice | Why |
+| :--- | :--- |
+| `--cap-drop ALL`, `--read-only`, `no-new-privileges` | Strong default hardening. |
+| **Resource limits** (memory, CPU, PIDs) | Prevents denial of service. |
+| **Never** `--privileged`, the Docker socket, or host mounts without strong reason | Each nearly removes isolation. |
+| **Secrets from a secrets manager** or mounted files | Not in env vars or images. |
+| **Network segmentation**, localhost bindings, internal networks | Limits lateral movement. |
+| **Patch** Docker, containerd, runc, and the host | Prevents breakouts. |
+| **Rootless Docker** where feasible | Breakout lands unprivileged. |
+| **Monitor runtime behavior** (Falco, audit logs) | Detect attacks in progress. |
+
+### Protect the Supply Chain Itself
+
+| Practice | Why |
+| :--- | :--- |
+| **Pin GitHub Actions to full commit SHAs** | Tags can be silently re-pointed (the 2026 Trivy incident). |
+| **Pin tool versions and verify checksums or signatures** | Do not run unverified downloads. |
+| **Never `curl | sh` unreviewed installers** | You run whatever the server sends. |
+| **Minimal workflow `permissions:`** | Limits what a malicious step can do. |
+| **Short-lived credentials (OIDC)** instead of stored cloud keys | Nothing durable to steal. |
+| **Have an incident plan**: if a tool may have run compromised, rotate every reachable secret | Speed matters. |
 
 ### Maturity Roadmap
 
 ```text
-Level 1  Aware       Dependabot alerts on, lock files committed, know your direct dependencies
-Level 2  Scanning    Dependency-Check or equivalent in CI with a gate, reports archived
-Level 3  Inventory   SBOM per release (CycloneDX/SPDX), stored and searchable, dependency review on PRs
-Level 4  Continuous  Dependency-Track or scheduled SBOM rescans, signed SBOMs, KEV/EPSS-driven SLAs,
-                     cooldowns and private registry controls
+Level 1  Basic       Non-root user, slim base, .dockerignore, no secrets in images
+Level 2  Scanned     Trivy in CI with a gate, SBOMs stored, scheduled rescans
+Level 3  Trusted     Digest pinning, signing and verification, private registry, pinned actions
+Level 4  Enforced    Admission control rejects unsigned and non-compliant images (Module 08),
+                     runtime detection (Falco), automated base-image rebuilds
 ```
 
 ### Know the Limits
 
-- A **clean SCA report** means "no *known* vulnerabilities in the databases we checked", not "no risk".
-- SCA does **not** detect malicious packages that have no CVE yet, flaws in your own code, or whether vulnerable code is reachable.
-- An SBOM is an **inventory**, only as good as how it was generated.
+- A **clean scan** means "no *known* vulnerabilities in the database at this moment", not "this image is secure".
+- A **valid signature** proves origin and integrity, not safety.
+- Image scanning does not replace **SAST** (your code), **DAST** (running behavior), **runtime monitoring**, or **good architecture**.
 
 ---
 
-## 14. Knowledge Check
+## 18. Knowledge Check
 
-1. What does SCA find, and what does it **not** find? Give two examples of each.
-2. Why did Log4Shell cause so much confusion, and how does an SBOM help with a similar event?
-3. What is the difference between a direct and a transitive dependency? Why do transitive ones matter for security?
-4. What is the difference between a manifest and a lock file? Why should lock files be committed?
-5. What are a PURL and a CPE, and why can CPE-based matching produce false positives?
-6. Name three supply chain attacks that a CVE scan will usually **not** catch, and one control for each.
-7. What is a CVE? Who assigns CVE IDs, and what does the NVD add?
-8. Decode this vector in plain words: `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H`.
-9. Why is CVSS not the same as risk? Name four additional signals you should use.
-10. What are EPSS and the CISA KEV catalog, and how do they change prioritization?
-11. How does Dependency-Check identify a component and match it to a vulnerability?
-12. Why should you use an NVD API key and cache the Dependency-Check database?
-13. What do the confidence levels in a Dependency-Check report mean, and which findings deserve the most skepticism?
-14. What does `--failOnCVSS 7` do? Why must a non-zero exit code sometimes be investigated rather than assumed to be a vulnerability?
-15. What should a good suppression contain? Why is an expiry date important?
-16. What is an SBOM, and what is it **not**?
-17. List the NTIA minimum elements of an SBOM.
-18. Compare SPDX and CycloneDX. When might you produce both?
-19. Why should an SBOM be generated from the built artifact instead of only from `pom.xml`?
-20. How can stored SBOMs be rescanned, and why is that valuable after a release?
-21. What is VEX, and how does it complement an SBOM?
-22. What are the three parts of Dependabot, and which one needs a configuration file?
-23. How should you handle a Dependabot pull request? What are two supply chain risks of auto-merging?
-24. What does the dependency review action do, and why is it a good pull request gate?
-25. Compare Dependabot and Dependency-Check. When would you use each?
-26. List four remediation strategies in order of preference, and explain how to force a safe version of a transitive dependency.
-27. Design a fair SCA gate policy for a team adopting SCA for the first time.
-28. Why should SCA scans run on a **schedule** as well as on every commit?
+1. Why is a container **not** the same as a virtual machine, and why does the shared kernel matter for security?
+2. Name four Linux features that provide container isolation and what each does.
+3. Why is membership in the `docker` group, or access to `/var/run/docker.sock`, effectively root access?
+4. Explain image layers. Why does deleting a secret in a later layer **not** remove it from the image?
+5. What is the difference between a tag and a digest? Which should you deploy, and why?
+6. List five problems in the insecure Dockerfile from section 4 and how to fix each.
+7. What does a multi-stage build achieve for security?
+8. Why should the `USER` in a Dockerfile be a **numeric** non-root ID?
+9. Why are `ENV`, `ARG`, and `COPY .env` unsafe for secrets? What is the safe build-time alternative?
+10. What does `.dockerignore` protect against?
+11. Compare full, slim, distroless, and scratch base images.
+12. What does `trivy image` look at to find vulnerabilities? Name the two main categories of packages it examines.
+13. What do the **Status** values `fixed`, `affected`, and `will_not_fix` mean, and how should each change your action?
+14. Why is `--ignore-unfixed` useful for a pipeline gate? What is its downside?
+15. What do `--exit-code 1` and `--severity` do together?
+16. Why does a base image change often cause the biggest drop in vulnerability counts?
+17. How do you decide which vulnerability to fix first when a report has hundreds of findings?
+18. What is an SBOM, and how does it help when a new critical vulnerability is announced?
+19. What does a Cosign signature prove, and what does it **not** prove?
+20. Compare **key-based** and **keyless** signing. Which is better for CI/CD, and why?
+21. Why must Cosign sign a **digest** and not a tag? How does this stop tag tampering?
+22. Why must keyless verification include `--certificate-identity` and `--certificate-oidc-issuer`?
+23. Where can signature verification be enforced so that nobody can forget it?
+24. Name six `docker run` flags that harden a container at runtime and the attack each reduces.
+25. Why are `--privileged`, a mounted Docker socket, and `--network host` dangerous?
+26. Why are environment variables a weak way to deliver secrets to containers? What are better options?
+27. Explain what happened in the March 2026 Trivy supply chain attack and three specific defenses that would reduce the risk.
+28. Why should the scan run **before** the image is pushed, and signing only on the main branch?
 
 ---
 
-## 15. Official References
+## 19. Official References
 
-### SCA and Vulnerability Data
+### Docker
 
-- OWASP Dependency-Check: <https://dependency-check.github.io/DependencyCheck/>
-- Dependency-Check source and releases: <https://github.com/dependency-check/DependencyCheck>
-- Dependency-Check CLI arguments: <https://dependency-check.github.io/DependencyCheck/dependency-check-cli/arguments.html>
-- NVD (National Vulnerability Database): <https://nvd.nist.gov/>
-- Request an NVD API key: <https://nvd.nist.gov/developers/request-an-api-key>
-- CVE Program: <https://www.cve.org/>
-- GitHub Advisory Database: <https://github.com/advisories>
-- OSV (Open Source Vulnerabilities): <https://osv.dev/>
-- FIRST CVSS: <https://www.first.org/cvss/>
-- FIRST EPSS: <https://www.first.org/epss/>
-- CISA Known Exploited Vulnerabilities catalog: <https://www.cisa.gov/known-exploited-vulnerabilities-catalog>
-- CWE: <https://cwe.mitre.org/>
+- Docker build best practices: <https://docs.docker.com/build/building/best-practices/>
+- Docker Engine security: <https://docs.docker.com/engine/security/>
+- Rootless mode: <https://docs.docker.com/engine/security/rootless/>
+- Build secrets: <https://docs.docker.com/build/building/secrets/>
+- Docker Bench for Security: <https://github.com/docker/docker-bench-security>
+- Hadolint (Dockerfile linter): <https://github.com/hadolint/hadolint>
+- Distroless images: <https://github.com/GoogleContainerTools/distroless>
 
-### SBOM
+### Trivy
 
-- Syft: <https://github.com/anchore/syft>
-- Grype: <https://github.com/anchore/grype>
+- Trivy project site and documentation: <https://trivy.dev/>
+- Trivy source and releases: <https://github.com/aquasecurity/trivy>
+- Trivy release signature verification: <https://trivy.dev/docs/v0.72/getting-started/signature-verification/>
+- Security advisory for the March 2026 incident: <https://github.com/aquasecurity/trivy/security/advisories/GHSA-69fq-xp46-6x23>
+- Aqua's incident update: <https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/>
+- Incident discussion and updates: <https://github.com/aquasecurity/trivy/discussions/10425>
+
+### Cosign, Sigstore, and SBOM Tools
+
+- Sigstore documentation (Cosign): <https://docs.sigstore.dev/>
+- Cosign source and releases: <https://github.com/sigstore/cosign>
+- Syft (SBOM generator): <https://github.com/anchore/syft>
 - CycloneDX: <https://cyclonedx.org/>
 - SPDX: <https://spdx.dev/>
-- Package URL (PURL) specification: <https://github.com/package-url/purl-spec>
-- OWASP Dependency-Track: <https://dependencytrack.org/>
-- NTIA, The Minimum Elements for an SBOM: <https://www.ntia.gov/report/2021/minimum-elements-software-bill-materials-sbom>
-- CISA SBOM resources: <https://www.cisa.gov/sbom>
+- SLSA (supply chain framework): <https://slsa.dev/>
 
-### GitHub
+### Standards and Guidance
 
-- Dependabot documentation: <https://docs.github.com/en/code-security/dependabot>
-- Dependabot configuration options (`dependabot.yml`): <https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference>
-- Dependency review action: <https://github.com/actions/dependency-review-action>
-- Exporting a repository SBOM: <https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/exporting-a-software-bill-of-materials-for-your-repository>
-
-### Ecosystem Audit Tools and Guidance
-
-- npm audit: <https://docs.npmjs.com/cli/commands/npm-audit>
-- pip-audit: <https://github.com/pypa/pip-audit>
-- govulncheck: <https://go.dev/doc/security/vuln/>
-- OWASP Software Component Verification Standard (SCVS): <https://owasp.org/www-project-software-component-verification-standard/>
-- SLSA supply chain framework: <https://slsa.dev/>
+- OWASP Docker Security Cheat Sheet: <https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html>
+- NIST SP 800-190, Application Container Security Guide: <https://csrc.nist.gov/pubs/sp/800/190/final>
+- CIS Docker Benchmark: <https://www.cisecurity.org/benchmark/docker>
 
 ### Related Modules in This Repository
 
-- [Module 03: Git, GitHub and Secret Security](../03-git-github-and-secret-security/README.md) for Dependabot basics and protected pipelines.
-- [Module 04: Static Application Security Testing](../04-static-application-security-testing-sast/README.md) for analyzing **your** code.
-- [Module 06: Dynamic Application Security Testing](../06-dynamic-application-security-testing-dast/README.md) for testing the running application.
-- [Module 07: Docker and Container Security](../07-docker-and-container-security/README.md) for image SBOMs, Trivy, and signing SBOMs with Cosign.
+- [Module 02: Linux Security](../02-linux-security/README.md) for capabilities, permissions, and host hardening.
+- [Module 03: Git, GitHub and Secret Security](../03-git-github-and-secret-security/README.md) for pinning actions and protecting secrets.
+- [Module 05: Software Composition Analysis and SBOM](../05-software-composition-analysis-sca-and-sbom/README.md) for CVE, CVSS, and SBOM concepts.
+- [Module 08: Kubernetes Security](../08-kubernetes-security/README.md) for admission control, Kyverno, and Falco.
 
 > [!NOTE]
-> Tool versions, file names, command-line options, GitHub features, and regulations change over time. Before relying on a command in this module, check the official documentation above.
+> Tool versions, image names, action versions, flags, and registry limits change often. Security tools also publish advisories. Before relying on any command in this module, check the official documentation and advisories linked above.
 
 ---
 
-## 16. Module Completion Checklist
+## 20. Module Completion Checklist
 
 Tick each box when you can do it **without looking at the notes**.
 
 ### Concepts
 
-- [ ] I can explain SCA and how it differs from SAST and DAST.
-- [ ] I can explain why most of an application is third-party code and why that is a risk.
-- [ ] I can explain the Log4Shell lesson and why an SBOM would have helped.
-- [ ] I can distinguish direct from transitive dependencies and show a dependency tree.
-- [ ] I can explain manifests, lock files, PURL, and CPE.
-- [ ] I can list supply chain attacks that CVE scanning does not catch, and the controls against them.
+- [ ] I can explain how a container differs from a virtual machine and why the shared kernel matters.
+- [ ] I can name the kernel features behind containers (namespaces, cgroups, capabilities, seccomp, MAC).
+- [ ] I can explain image layers and why secrets in any layer are permanent.
+- [ ] I can explain the difference between tags and digests, and why digests matter.
+- [ ] I can list the main container risks and the control for each.
+- [ ] I can explain why `--privileged`, the Docker socket, and host mounts are dangerous.
 
-### Vulnerability Data
+### Building Secure Images
 
-- [ ] I can read a CVE record and name its main fields.
-- [ ] I can decode a CVSS vector and explain the score.
-- [ ] I can explain why CVSS is not risk, and how EPSS, KEV, exposure, and fix availability change priority.
+- [ ] I can write a Dockerfile with a minimal pinned base, multi-stage build, and non-root numeric user.
+- [ ] I can keep secrets out of images using `.dockerignore`, BuildKit secrets, and runtime injection.
+- [ ] I can lint a Dockerfile with Hadolint and `trivy config`.
+- [ ] I can compare base image types and choose appropriately.
 
-### Dependency-Check
+### Trivy
 
-- [ ] I can obtain an NVD API key and store it safely.
-- [ ] I can run Dependency-Check with Docker, keep the database cached, and pin the version.
-- [ ] I can read the HTML and JSON reports, including confidence levels.
-- [ ] I can use `--failOnCVSS` as a gate and understand its exit codes.
-- [ ] I can write a narrow suppression with a reason and an expiry.
+- [ ] I installed Trivy from a pinned, verified release (and know why `curl | sh` and `latest` are risky).
+- [ ] I can scan an image, a tar file, a folder, and a Dockerfile.
+- [ ] I can filter by severity, ignore unfixed issues, and set exit codes for a gate.
+- [ ] I can read a Trivy report, including the Status column.
+- [ ] I can prioritize findings by risk, not just severity.
+- [ ] I can remediate by updating the base image, dependencies, and image structure, and then prove it by rescanning.
+- [ ] I can generate and inspect an SBOM and scan it.
+- [ ] I can manage exceptions safely with reasons and expiry dates.
 
-### SBOM and Syft
+### Cosign
 
-- [ ] I can explain what an SBOM is and is not, and list its minimum elements.
-- [ ] I can compare SPDX and CycloneDX and read both.
-- [ ] I can generate SBOMs with Syft from a directory and an image.
-- [ ] I can search a collection of SBOMs for a component.
-- [ ] I can scan an SBOM with Trivy or Grype.
-- [ ] I can explain SBOM signing, VEX, and continuous monitoring with Dependency-Track.
+- [ ] I can explain what signing proves and does not prove.
+- [ ] I can compare key-based and keyless signing.
+- [ ] I can sign an image by digest and verify it.
+- [ ] I can attach and verify an SBOM attestation.
+- [ ] I can verify keyless signatures with a pinned identity and issuer.
+- [ ] I can demonstrate that verification catches a tampered tag.
 
-### Dependabot and CI/CD
+### CI/CD and Runtime
 
-- [ ] I can explain Dependabot alerts, security updates, and version updates.
-- [ ] I can write a `dependabot.yml` with grouping, ignores, and cooldowns.
-- [ ] I can review a Dependabot pull request safely.
-- [ ] I can set up the dependency review check.
-- [ ] I can build GitHub Actions and Jenkins pipelines that scan, generate SBOMs, and gate.
-- [ ] I run scans on a schedule as well as on each change.
+- [ ] I can build a GitHub Actions workflow that builds, scans, gates, pushes, signs, and verifies.
+- [ ] I can build the equivalent Jenkins pipeline without mounting the Docker socket into the scanner.
+- [ ] I pin actions to commit SHAs and tool versions, and verify downloads.
+- [ ] I can run a container with least-privilege flags and prove the restrictions work.
+- [ ] I can describe how these controls map to Kubernetes `securityContext` settings.
 
-### Remediation
+### Supply Chain Awareness
 
-- [ ] I can upgrade a direct dependency and force a safe version of a transitive one.
-- [ ] I can choose between upgrade, replace, remove, mitigate, and accept, and justify the choice.
-- [ ] I can verify a fix by rescanning and record the decision.
+- [ ] I can summarize the March 2026 Trivy incident and the defenses against it.
 
 ### Labs
 
-- [ ] Lab 1: Explored direct and transitive dependencies
-- [ ] Lab 2: Researched a CVE and decoded CVSS
-- [ ] Lab 3: Scanned with Dependency-Check
-- [ ] Lab 4: Triaged, suppressed, and gated
-- [ ] Lab 5: Remediated the vulnerabilities
-- [ ] Lab 6: Generated and inspected SBOMs with Syft
-- [ ] Lab 7: Scanned the SBOM and compared tools
-- [ ] Lab 8: Dependabot and dependency review
-- [ ] Lab 9: SCA in GitHub Actions and Jenkins
+- [ ] Lab 1: Explored container risks
+- [ ] Lab 2: Wrote a secure Dockerfile
+- [ ] Lab 3: Scanned with Trivy
+- [ ] Lab 4: Remediated step by step
+- [ ] Lab 5: Generated and inspected an SBOM
+- [ ] Lab 6: Signed and verified with Cosign (including the tamper test)
+- [ ] Lab 7: Runtime hardening
+- [ ] Lab 8: Container security in GitHub Actions
+- [ ] Lab 9: Container security in Jenkins
 
 ---
 
 ## Summary
 
-In this module, you learned how to manage the risk in the code you **import**:
+In this module, you learned to secure containers across their whole lifecycle:
 
-- **SCA** identifies third-party components and matches them against **known** vulnerabilities. It complements SAST (your code) and DAST (the running app), and it does not catch unknown or **malicious** packages by itself.
-- **Transitive dependencies** make up most of what you ship. **Lock files**, pinned versions, private registries, cooldowns, and review of new dependencies reduce supply chain risk.
-- **CVE** names a vulnerability, **CVSS** scores its severity, and **EPSS** and **CISA KEV** show how likely or how certain exploitation is. Prioritize by **risk**, not by CVSS alone.
-- **Dependency-Check** scans files and libraries with an evidence-based method. Use an **NVD API key**, cache the database, read the **confidence**, gate with `--failOnCVSS`, and handle exceptions with **narrow, expiring suppressions**.
-- An **SBOM** is the ingredient list of your software. Produce **CycloneDX and/or SPDX** from the **artifact you ship**, store it per release, sign it, and **rescan it continuously**.
-- **Syft** generates SBOMs. **Trivy**, **Grype**, and **Dependency-Track** consume them.
-- **Dependabot** provides alerts, security updates, and version updates. Review its pull requests like any other code, and use **dependency review** to stop vulnerable additions.
-- **Gates and remediation:** fail on the worst and on known-exploited issues, fix by upgrading, overriding, replacing, or removing, and always **rescan to prove it**. Run scans **daily**, because new CVEs appear after you ship.
-- **Pin and verify your security tools too.** They are part of your supply chain.
+- **Containers share the host kernel**, so isolation settings and a secure host matter. The Docker daemon and socket are effectively root.
+- **Dockerfiles** should use a minimal, pinned base image, multi-stage builds, a non-root numeric user, a `.dockerignore`, and no secrets in layers.
+- **Image layers are permanent history**. Anything that was ever copied or set in a layer can be recovered.
+- **Trivy** scans images, files, Dockerfiles, and SBOMs for vulnerabilities, secrets, and misconfigurations. A gate with `--exit-code`, `--severity`, and `--ignore-unfixed` keeps risky images from shipping. Prioritize by fix availability, exploitability, exposure, and impact.
+- **Remediation** is mostly a better base image, updated dependencies, and removing what is not needed. Always rescan to prove it.
+- **SBOMs** answer "where is this component?" quickly and can be rescanned later.
+- **Cosign** signs image **digests** to prove origin and integrity, with **keyless** signing ideal for CI. Always verify with a **pinned identity**, and enforce verification where nobody can skip it.
+- **Runtime hardening** (`--cap-drop ALL`, `--read-only`, `no-new-privileges`, limits, no privileged mode or Docker socket) limits what an attacker can do.
+- **Security tools are part of your supply chain.** The March 2026 Trivy compromise showed why you must **pin GitHub Actions by commit SHA, pin and verify tool versions, and limit CI credentials**.
 
-In the next module, you will move from analyzing code and components to testing the **running application** from the outside with DAST.
+In the next module, you will take these secured, signed images into **Kubernetes** and learn to protect clusters with RBAC, Pod Security Standards, admission control, and runtime detection.
 
 ---
 
 ## Next Module
 
-➡️ [Module 06: Dynamic Application Security Testing (DAST)](../06-dynamic-application-security-testing-dast/README.md)
+➡️ [Module 08: Kubernetes Security](../08-kubernetes-security/README.md)
 
-[⬅️ Previous: Module 04: Static Application Security Testing](../04-static-application-security-testing-sast/README.md) | [🏠 Main README](../README.md)
+[⬅️ Previous: Module 06: Dynamic Application Security Testing](../06-dynamic-application-security-testing-dast/README.md) | [🏠 Main README](../README.md)
 
 ---
 
