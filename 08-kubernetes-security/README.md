@@ -1170,7 +1170,7 @@ Everything so far protects the cluster **before** a workload runs: who may deplo
 
 ### 🛡️ Learn KubeArmor in Depth
 
-➡️ **[KubeArmor Zero to Hero](https://github.com/bhuvan-raj/KubeArmor-Zero-to-Hero)**: installation, security policies, enforcement and audit modes, visibility, and hands-on labs.
+➡️ **[KubeArmor Zero to Hero](https://github.com/bhuvan-raj/KubeArmour-Zero-to-Hero)**: installation, security policies, enforcement and audit modes, visibility, and hands-on labs.
 
 ### How It Fits Into This Module
 
