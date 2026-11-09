@@ -119,20 +119,83 @@ DevSecOps helps organizations detect and remediate these risks earlier and enfor
 
 ---
 
-## 04. DevSecOps Lifecycle
 
-Security activities should be integrated into every stage of software delivery.
+## 4.DevSecOps Lifecycle
 
-| Stage | Security Activity |
-| :--- | :--- |
-| **Plan** | Define security requirements and identify threats. |
-| **Code** | Follow secure coding practices and detect leaked secrets. |
-| **Build** | Perform static analysis and dependency scanning. |
-| **Test** | Perform application security testing. |
-| **Package** | Scan images, generate SBOMs, and sign artifacts. |
-| **Release** | Verify security policies and approve releases. |
-| **Deploy** | Enforce infrastructure and Kubernetes security policies. |
-| **Operate** | Monitor security events and investigate incidents. |
+A stage-by-stage view of the DevSecOps lifecycle, showing the core activities at each stage and the security practices and tools that go with them.
+
+## Overview
+
+| # | Stage | Activities | Security Practices / Tools |
+|---|-------|------------|----------------------------|
+| 01 | Requirement Gathering | Gather business and application requirements | Define security requirements, compliance requirements and data protection needs |
+| 02 | Planning | Define project scope, resources and timelines | Threat modeling, risk assessment and security planning |
+| 03 | Design | Design application architecture, database and infrastructure | Secure architecture, network security design and access control planning |
+| 04 | Development | Developers write application code | Secure coding, SAST, secret scanning — **SonarQube**, **Gitleaks** |
+| 05 | Build | Compile code and build application artifacts | Dependency scanning and software composition analysis — **OWASP Dependency-Check** |
+| 06 | Testing | Perform functional, integration and performance testing | DAST and security testing — **OWASP ZAP** |
+| 07 | Packaging | Package applications into deployable artifacts or container images | Container scanning, SBOM generation and artifact signing — **Trivy**, **Syft**, **Cosign** |
+| 08 | Release | Approve and prepare artifacts for production release | Security gates, vulnerability verification and release approval |
+| 09 | Deployment | Deploy applications and infrastructure | IaC scanning, Kubernetes admission policies and security enforcement — **Checkov**, **Kyverno** |
+| 10 | Monitoring & Operations | Monitor applications, infrastructure and production workloads | Runtime security, threat detection, logging and alerting — **KubeArmor**, **Prometheus**, **Grafana**, **Loki** |
+| 11 | Feedback & Continuous Improvement | Analyze incidents, user feedback and operational performance | Vulnerability remediation, incident response and continuous security improvements |
+
+---
+
+## Stage Details
+
+### 01. Requirement Gathering
+- **Activities:** Gather business and application requirements.
+- **Security:** Define security requirements, compliance requirements and data protection needs.
+
+### 02. Planning
+- **Activities:** Define project scope, resources and timelines.
+- **Security:** Threat modeling, risk assessment and security planning.
+
+### 03. Design
+- **Activities:** Design application architecture, database and infrastructure.
+- **Security:** Secure architecture, network security design and access control planning.
+
+### 04. Development
+- **Activities:** Developers write application code.
+- **Security:** Secure coding, SAST, secret scanning.
+- **Tools:** SonarQube, Gitleaks
+
+### 05. Build
+- **Activities:** Compile code and build application artifacts.
+- **Security:** Dependency scanning and software composition analysis (SCA).
+- **Tools:** OWASP Dependency-Check
+
+### 06. Testing
+- **Activities:** Perform functional, integration and performance testing.
+- **Security:** DAST and security testing.
+- **Tools:** OWASP ZAP
+
+### 07. Packaging
+- **Activities:** Package applications into deployable artifacts or container images.
+- **Security:** Container scanning, SBOM generation and artifact signing.
+- **Tools:** Trivy, Syft, Cosign
+
+### 08. Release
+- **Activities:** Approve and prepare artifacts for production release.
+- **Security:** Security gates, vulnerability verification and release approval.
+
+### 09. Deployment
+- **Activities:** Deploy applications and infrastructure.
+- **Security:** IaC scanning, Kubernetes admission policies and security enforcement.
+- **Tools:** Checkov, Kyverno
+
+### 10. Monitoring & Operations
+- **Activities:** Monitor applications, infrastructure and production workloads.
+- **Security:** Runtime security, threat detection, logging and alerting.
+- **Tools:** KubeArmor, Prometheus, Grafana, Loki
+
+### 11. Feedback & Continuous Improvement
+- **Activities:** Analyze incidents, user feedback and operational performance.
+- **Security:** Vulnerability remediation, incident response and continuous security improvements.
+
+---
+
 
 ### Example Workflow
 
