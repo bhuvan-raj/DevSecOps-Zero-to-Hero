@@ -52,7 +52,7 @@ A structured, hands-on learning repository for mastering DevSecOps by integratin
 | 05 | [Software Composition Analysis (SCA) and SBOM](./05-software-composition-analysis-sca-and-sbom/README.md) | OWASP Dependency-Check, Syft |
 | 06 | [Dynamic Application Security Testing (DAST)](./06-dynamic-application-security-testing-dast/README.md) | OWASP ZAP |
 | 07 | [Docker and Container Security](./07-docker-and-container-security/README.md) | Trivy, Syft, Cosign |
-| 08 | [Kubernetes Security](./08-kubernetes-security/README.md) | Trivy, Kyverno, Falco |
+| 08 | [Kubernetes Security](./08-kubernetes-security/README.md) | Trivy, Kyverno, KubeArmour |
 | 09 | [Terraform and Infrastructure as Code Security](./09-terraform-and-infrastructure-as-code-security/README.md) | Checkov |
 | 10 | [Jenkins and GitHub Actions Security](./10-jenkins-and-github-actions-security/README.md) | Gitleaks, SonarQube, Dependency-Check, Trivy |
 | 11 | [Secrets Management and Cryptography](./11-secrets-management-and-cryptography/README.md) | HashiCorp Vault |
