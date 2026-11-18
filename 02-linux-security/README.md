@@ -815,83 +815,1060 @@ A lower score means a better-sandboxed service. Use the report to decide which h
 
 ## 09. Host Firewall Security
 
-### Why a Host Firewall?
+## Linux Firewall – UFW Complete Tutorial
 
-A firewall controls which network traffic may reach your server. The safest approach is **default deny**:
+![Linux][badge-linux] ![Ubuntu][badge-ubuntu] ![UFW][badge-ufw] ![AWS EC2][badge-ec2] ![Level][badge-level]
 
-> **Block everything incoming by default, then allow only what you specifically need.**
+---
 
-Even if you use a cloud firewall (security groups), a host firewall adds another layer. This is defense in depth.
+### Table of Contents
 
-### Firewall Tools at a Glance
+- [Introduction to Linux Firewall](#introduction-to-linux-firewall)
+- [What is UFW?](#what-is-ufw)
+- [UFW vs iptables vs nftables](#ufw-vs-iptables-vs-nftables)
+- [How UFW works](#how-ufw-works)
+- [Installing UFW](#installing-ufw)
+- [Enabling and disabling UFW](#enabling-and-disabling-ufw)
+- [Default firewall policies](#default-firewall-policies)
+- [Allowing and denying traffic](#allowing-and-denying-traffic)
+- [Allowing and blocking specific IP addresses](#allowing-and-blocking-specific-ip-addresses)
+- [Incoming and outgoing firewall rules](#incoming-and-outgoing-firewall-rules)
+- [Managing firewall rules](#managing-firewall-rules)
+- [UFW configuration files](#ufw-configuration-files)
+- [Understanding ICMP](#understanding-icmp)
+- [Blocking ICMP ping requests](#blocking-icmp-ping-requests)
+- [Understanding the firewall rule inside before.rules](#understanding-the-firewall-rule-inside-beforerules)
+- [Monitoring and troubleshooting UFW](#monitoring-and-troubleshooting-ufw)
+- [Practical AWS EC2 Lab – Two machines communicating using ping](#practical-aws-ec2-lab--two-machines-communicating-using-ping)
+- [Student practice exercises](#student-practice-exercises)
+- [Interview questions and answers](#interview-questions-and-answers)
+- [Final teaching recommendation](#final-teaching-recommendation)
 
-| Tool | Common On | Notes |
-| :--- | :--- | :--- |
-| **ufw** | Ubuntu, Debian | Simple front-end. Best for learning. |
-| **firewalld** | RHEL, Rocky, Fedora | Zone-based manager. |
-| **nftables** | Modern Linux (default backend) | Powerful, current framework. |
-| **iptables** | Older systems | Legacy tool, still widely seen. |
+---
 
-### Configure `ufw` Step by Step
+## Introduction to Linux Firewall
 
-> [!WARNING]
-> **Allow SSH *before* enabling the firewall**, or you will cut off your own connection.
+A **firewall** is a security mechanism that monitors and controls incoming and outgoing network traffic based on predefined security rules. It acts as a barrier between trusted and untrusted networks.
+
+Suppose you have a Linux server running multiple services:
+
+| Service | Port |
+|---------|------|
+| SSH     | 22   |
+| HTTP    | 80   |
+| HTTPS   | 443  |
+| MySQL   | 3306 |
+
+You may want to:
+
+- Allow SSH connections only from your administrator's IP address.
+- Allow HTTP and HTTPS traffic from everyone.
+- Block MySQL access from the public internet.
+- Block ping requests from specific IP addresses.
+
+A firewall helps implement these security requirements.
+
+### Types of firewall rules
+
+| Rule | Behaviour |
+|------|-----------|
+| **Allow** | Permits the specified network traffic. |
+| **Deny / Drop** | Blocks the specified network traffic. |
+| **Reject** | Blocks the traffic and sends a rejection response to the sender. |
+
+### Why do we need a firewall?
+
+- Prevent unauthorized access.
+- Protect servers from unwanted network connections.
+- Restrict access to specific ports and services.
+- Control communication between different systems.
+- Improve server security.
+
+---
+
+## What is UFW?
+
+**UFW** stands for **Uncomplicated Firewall**. It is a user-friendly firewall management tool available on Linux distributions, particularly Ubuntu.
+
+UFW provides simple commands to manage firewall rules without requiring administrators to write complex low-level firewall rules manually.
+
+Allow SSH traffic:
 
 ```bash
-# 1. Set the defaults
+sudo ufw allow 22/tcp
+```
+
+Block SSH traffic:
+
+```bash
+sudo ufw deny 22/tcp
+```
+
+Without UFW, administrators can configure firewall rules using tools such as `iptables` or `nftables`.
+
+---
+
+## UFW vs iptables vs nftables
+
+These are related but different firewall technologies and utilities.
+
+| Feature | UFW | iptables | nftables |
+|---------|-----|----------|----------|
+| Type | Firewall frontend | Firewall rule utility | Firewall framework |
+| Complexity | Easy | Advanced | Advanced |
+| Configuration | Simple commands | Detailed rules | Detailed rules |
+| Beginner friendly | Yes | Less friendly | Less friendly |
+| Purpose | Simplify firewall management | Manage packet filtering rules | Modern packet filtering |
+| Common usage | Ubuntu administration | Traditional Linux firewall management | Modern Linux systems |
+
+### Understand their relationship
+
+- UFW provides a simplified interface for managing firewall rules.
+- iptables provides a command-line interface for managing traditional Netfilter rules.
+- nftables is the modern Linux packet-filtering framework.
+
+> **Important:** UFW is **not** an upgraded version of iptables. They are not two independent firewall layers. UFW manages firewall rules through the underlying Linux firewall infrastructure.
+
+---
+
+## How UFW works
+
+UFW acts as an interface between the administrator and the Linux firewall infrastructure.
+
+```text
+   +-------------------------------+
+   |         Administrator         |
+   |   sudo ufw allow 22/tcp       |
+   +---------------+---------------+
+                   |
+                   v
+   +-------------------------------+
+   |              UFW              |
+   |  Firewall management interface|
+   +---------------+---------------+
+                   |
+                   v
+   +-------------------------------+
+   |        Linux Netfilter        |
+   | Kernel packet filtering infra |
+   +---------------+---------------+
+                   |
+                   v
+   +-------------------------------+
+   |   Network traffic filtering   |
+   +-------------------------------+
+```
+
+When a packet reaches the Linux server, the kernel evaluates the configured firewall rules and decides whether to **accept**, **drop** or **reject** the packet.
+
+---
+
+## Installing UFW
+
+UFW is commonly available in Ubuntu repositories.
+
+Update the package repository:
+
+```bash
+sudo apt update
+```
+
+Install UFW:
+
+```bash
+sudo apt install ufw -y
+```
+
+Check the installed version:
+
+```bash
+sudo ufw version
+```
+
+Check the current firewall status:
+
+```bash
+sudo ufw status
+```
+
+Possible output:
+
+```text
+Status: inactive
+```
+
+This means UFW is installed but not currently enabled.
+
+---
+
+## Enabling and disabling UFW
+
+Enable UFW:
+
+```bash
+sudo ufw enable
+```
+
+Disable UFW:
+
+```bash
+sudo ufw disable
+```
+
+Check firewall status:
+
+```bash
+sudo ufw status
+```
+
+Check detailed firewall status:
+
+```bash
+sudo ufw status verbose
+```
+
+Example output:
+
+```text
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+```
+
+> **Important:** Before enabling UFW on a remote server, allow SSH access first.
+>
+> ```bash
+> sudo ufw allow 22/tcp
+> sudo ufw enable
+> ```
+>
+> Otherwise, you may lose your SSH connection.
+
+---
+
+## Default firewall policies
+
+UFW supports default policies that determine what happens to traffic when no specific rule matches it.
+
+There are three important traffic directions:
+
+| Direction | Meaning |
+|-----------|---------|
+| Incoming | Traffic entering the server |
+| Outgoing | Traffic leaving the server |
+| Routed | Traffic forwarded through the server |
+
+Set default incoming policy to deny (blocks incoming connections unless explicitly allowed):
+
+```bash
+sudo ufw default deny incoming
+```
+
+Set default outgoing policy to allow (allows outgoing connections unless explicitly denied):
+
+```bash
+sudo ufw default allow outgoing
+```
+
+Set default routed policy to deny (prevents forwarded traffic by default):
+
+```bash
+sudo ufw default deny routed
+```
+
+### Recommended default configuration
+
+```bash
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
+sudo ufw default deny routed
+```
 
-# 2. Allow SSH (limit also rate-limits repeated connection attempts)
-sudo ufw limit 22/tcp
+---
 
-# 3. Allow only the services you actually run
-sudo ufw allow 443/tcp
+## Allowing and denying traffic
 
-# 4. Turn the firewall on
-sudo ufw enable
+UFW allows administrators to control traffic based on ports and protocols.
 
-# 5. Check the rules
+| Goal | Command |
+|------|---------|
+| Allow SSH (incoming TCP 22) | `sudo ufw allow 22/tcp` |
+| Deny SSH (incoming TCP 22) | `sudo ufw deny 22/tcp` |
+| Allow HTTP | `sudo ufw allow 80/tcp` |
+| Allow HTTPS | `sudo ufw allow 443/tcp` |
+| Deny HTTP | `sudo ufw deny 80/tcp` |
+| Allow DNS using UDP | `sudo ufw allow 53/udp` |
+| Allow DNS using TCP | `sudo ufw allow 53/tcp` |
+| Allow a port for both TCP and UDP | `sudo ufw allow 8080` |
+| Allow a range of ports (TCP 8000–9000) | `sudo ufw allow 8000:9000/tcp` |
+
+> When no protocol is specified (for example `sudo ufw allow 8080`), the rule applies to both TCP and UDP.
+
+---
+
+## Allowing and blocking specific IP addresses
+
+UFW also supports rules based on source and destination IP addresses.
+
+Allow a specific IP address:
+
+```bash
+sudo ufw allow from 192.168.1.10
+```
+
+Deny a specific IP address:
+
+```bash
+sudo ufw deny from 192.168.1.20
+```
+
+Allow a specific IP to access SSH only:
+
+```bash
+sudo ufw allow from 192.168.1.10 to any port 22 proto tcp
+```
+
+Allow a complete subnet:
+
+```bash
+sudo ufw allow from 192.168.1.0/24
+```
+
+Block a complete subnet:
+
+```bash
+sudo ufw deny from 192.168.1.0/24
+```
+
+---
+
+## Incoming and outgoing firewall rules
+
+UFW can control both incoming and outgoing network traffic.
+
+### Incoming traffic
+
+Packets **entering** the Linux server. For example, block incoming HTTP:
+
+```bash
+sudo ufw deny in 80/tcp
+```
+
+### Outgoing traffic
+
+Packets **leaving** the Linux server. For example, block outgoing SMTP on TCP port 25:
+
+```bash
+sudo ufw deny out 25/tcp
+```
+
+Allow outgoing HTTP traffic:
+
+```bash
+sudo ufw allow out 80/tcp
+```
+
+Allow outgoing HTTPS traffic:
+
+```bash
+sudo ufw allow out 443/tcp
+```
+
+> **Remember:** `in` means incoming. `out` means outgoing.
+
+---
+
+## Managing firewall rules
+
+As administrators, we need to view, delete and modify firewall rules.
+
+List all rules:
+
+```bash
+sudo ufw status numbered
+```
+
+Example:
+
+```text
+[ 1] 22/tcp       ALLOW IN    Anywhere
+[ 2] 80/tcp       ALLOW IN    Anywhere
+[ 3] 443/tcp      ALLOW IN    Anywhere
+```
+
+Delete a rule by its number (deletes rule 2):
+
+```bash
+sudo ufw delete 2
+```
+
+Delete a rule using its original command:
+
+```bash
+sudo ufw delete allow 80/tcp
+```
+
+Reset UFW to its initial state (removes configured rules):
+
+```bash
+sudo ufw reset
+```
+
+Reload UFW:
+
+```bash
+sudo ufw reload
+```
+
+---
+
+## UFW configuration files
+
+UFW stores its configuration and firewall rules in `/etc/ufw/`.
+
+| Configuration file | Purpose |
+|--------------------|---------|
+| `/etc/default/ufw` | Default firewall settings |
+| `/etc/ufw/before.rules` | IPv4 rules processed **before** user-defined rules |
+| `/etc/ufw/after.rules` | IPv4 rules processed **after** user-defined rules |
+| `/etc/ufw/user.rules` | Persistent IPv4 rules managed by UFW |
+| `/etc/ufw/before6.rules` | IPv6 rules processed before user-defined rules |
+| `/etc/ufw/after6.rules` | IPv6 rules processed after user-defined rules |
+| `/etc/ufw/user6.rules` | Persistent IPv6 rules managed by UFW |
+
+### What is before.rules?
+
+The `before.rules` file contains firewall rules that are evaluated **before** the normal user-defined UFW rules. For example, it contains rules for handling certain ICMP messages and other network traffic.
+
+```bash
+sudo nano /etc/ufw/before.rules
+```
+
+You will find rules similar to:
+
+```text
+-A ufw-before-input -p icmp --icmp-type destination-unreachable -j ACCEPT
+-A ufw-before-input -p icmp --icmp-type time-exceeded -j ACCEPT
+-A ufw-before-input -p icmp --icmp-type parameter-problem -j ACCEPT
+-A ufw-before-input -p icmp --icmp-type echo-request -j ACCEPT
+```
+
+These rules allow certain incoming ICMP messages. We can modify this file to configure additional firewall behaviour.
+
+---
+
+## Understanding ICMP
+
+**ICMP** stands for **Internet Control Message Protocol**. It is a network-layer protocol used for network diagnostics and error reporting. One of its most common uses is the `ping` command.
+
+```bash
+ping 8.8.8.8
+```
+
+When we execute this command:
+
+```text
+  Source machine                      Destination machine
+        |                                      |
+        |---- 1. ICMP Echo Request ----------->|
+        |                                      | 2. Request received
+        |<--- 3. ICMP Echo Reply --------------|
+        | 4. Response received                 |
+```
+
+> There are **no TCP or UDP port numbers** involved in ICMP communication.
+
+### Common ICMP message types
+
+| ICMP message | Purpose |
+|--------------|---------|
+| Echo Request | Request sent by ping |
+| Echo Reply | Response received by ping |
+| Destination Unreachable | Destination cannot be reached |
+| Time Exceeded | TTL has expired |
+| Parameter Problem | Error in IP header parameters |
+
+---
+
+## Blocking ICMP ping requests
+
+UFW provides commands for managing TCP and UDP port-based rules, IP addresses and other traffic policies. However, it does **not** provide a standard direct command such as:
+
+```bash
+sudo ufw deny icmp   # NOT a standard UFW command
+```
+
+To block specific ICMP message types, we configure the underlying firewall rules.
+
+### Block all incoming ping requests
+
+Open the configuration file:
+
+```bash
+sudo nano /etc/ufw/before.rules
+```
+
+Find the ICMP section:
+
+```text
+# ok icmp codes for INPUT
+```
+
+Add the following rule **before** the existing ICMP Echo Request ACCEPT rule:
+
+```text
+-A ufw-before-input -p icmp --icmp-type echo-request -j DROP
+```
+
+Save the file and reload UFW:
+
+```bash
+sudo ufw reload
+```
+
+Now incoming ping requests will be dropped.
+
+### Block ping requests from a specific IP
+
+Suppose we have:
+
+- Source IP: `192.168.1.20`
+- Destination server: `192.168.1.10`
+
+Add the following rule:
+
+```text
+-A ufw-before-input -s 192.168.1.20 -p icmp --icmp-type echo-request -j DROP
+```
+
+This blocks incoming ping requests originating from `192.168.1.20`. Other machines can still ping the server, provided no other firewall rule blocks them.
+
+### Allow ping requests again
+
+Remove or comment out the DROP rule:
+
+```text
+# -A ufw-before-input -p icmp --icmp-type echo-request -j DROP
+```
+
+Reload UFW:
+
+```bash
+sudo ufw reload
+```
+
+> **Important:** These examples are for IPv4. For equivalent IPv6 filtering, configure the corresponding rules in `/etc/ufw/before6.rules`.
+
+---
+
+## Understanding the firewall rule inside before.rules
+
+Consider this rule:
+
+```text
+-A ufw-before-input -s 192.168.1.20 -p icmp --icmp-type echo-request -j DROP
+```
+
+| Parameter | Explanation |
+|-----------|-------------|
+| `-A` | Append a rule to a chain |
+| `ufw-before-input` | Chain that processes incoming packets before user-defined rules |
+| `-s` | Specifies the source IP address |
+| `192.168.1.20` | IP address from which traffic originates |
+| `-p icmp` | Specifies ICMP protocol |
+| `--icmp-type` | Specifies the ICMP message type |
+| `echo-request` | Matches ping request packets |
+| `-j` | Specifies the action to perform |
+| `DROP` | Silently discards matching packets |
+
+### Understand the individual options
+
+**`-A` – Append.** Adds a rule to the end of the specified chain. Example: `-A INPUT` adds a rule to the INPUT chain.
+
+**`ufw-before-input` – Chain.** A chain is a collection of firewall rules that are evaluated against network packets. Common iptables chains:
+
+| Chain | Purpose |
+|-------|---------|
+| `INPUT` | Incoming traffic destined for the local machine |
+| `OUTPUT` | Traffic originating from the local machine |
+| `FORWARD` | Traffic passing through the machine |
+
+`ufw-before-input` is a UFW-managed chain for incoming traffic.
+
+**`-s` – Source IP.** Specifies the IP address from which the packet originates. Example: `-s 192.168.1.20` matches packets coming from `192.168.1.20`.
+
+**`-p` – Protocol.** Specifies the network protocol, for example `-p tcp`, `-p udp`, `-p icmp`.
+
+**`--icmp-type` – ICMP message type.** Specifies which ICMP message should match the rule. Example: `--icmp-type echo-request` matches ping request packets.
+
+**`-j` – Jump target.** Specifies what action should be performed when a packet matches the rule.
+
+| Target | Meaning |
+|--------|---------|
+| `ACCEPT` | Allow the packet |
+| `DROP` | Silently discard the packet |
+| `REJECT` | Discard the packet and send an error response |
+
+### Difference between DROP and REJECT
+
+| DROP | REJECT |
+|------|--------|
+| Silently discards packets | Discards packets and sends an error |
+| Sender generally experiences a timeout | Sender receives an immediate error |
+| No rejection notification | Rejection notification |
+
+### How to verify the rule
+
+```bash
+sudo iptables -L ufw-before-input -n -v
+```
+
+Or:
+
+```bash
+sudo iptables -S ufw-before-input
+```
+
+> **Note:** On systems using the nftables backend, `iptables` may be using its nft compatibility interface. You can also inspect rules with:
+>
+> ```bash
+> sudo nft list ruleset
+> ```
+
+> **Important teaching concept:** Firewall rules are evaluated according to chain order. Place the specific `DROP` rule **before** an existing `ACCEPT` rule that would otherwise match the same packet. Do not blindly append it after an `ACCEPT` rule.
+
+---
+
+## Monitoring and troubleshooting UFW
+
+Enable firewall logging:
+
+```bash
+sudo ufw logging on
+```
+
+Set logging level:
+
+```bash
+sudo ufw logging medium
+```
+
+Available levels: `off`, `low`, `medium`, `high`, `full`.
+
+View UFW logs on Ubuntu:
+
+```bash
+sudo journalctl -k | grep UFW
+```
+
+Or:
+
+```bash
+sudo grep UFW /var/log/ufw.log
+```
+
+> The log file may need to be enabled through the system logging configuration.
+
+Check active firewall rules and rule numbers:
+
+```bash
 sudo ufw status verbose
 sudo ufw status numbered
 ```
 
-### Common Rules
+Check underlying rules:
 
 ```bash
-# Allow SSH only from one trusted IP address
-sudo ufw allow from 203.0.113.10 to any port 22 proto tcp
-
-# Allow a subnet to reach a database port
-sudo ufw allow from 10.0.0.0/24 to any port 5432 proto tcp
-
-# Delete a rule by its number
-sudo ufw delete 3
-
-# Block one IP address
-sudo ufw deny from 198.51.100.7
+sudo iptables -L -n -v
 ```
 
-### Test Your Firewall
+---
 
-From another machine, scan **your own server** to see what is visible:
+## Practical AWS EC2 Lab – Two machines communicating using ping
+
+![Hands-on Lab][badge-lab] ![Difficulty: Beginner][badge-beginner]
+
+### Lab objective
+
+Create two Ubuntu EC2 instances and establish communication between them using ICMP ping. Then:
+
+1. Test communication between the instances.
+2. Block incoming ping requests using UFW's underlying configuration.
+3. Verify that ping stops working.
+4. Block ping from a specific source IP.
+5. Allow ping again.
+6. Verify that communication works.
+
+### Architecture
+
+```text
++--------------------------------------------------------------+
+|                    AWS VPC – 10.0.0.0/16                     |
+|                                                              |
+|   +---------------------------+   +-----------------------+  |
+|   |          EC2-1            |   |         EC2-2         |  |
+|   |      Firewall server      |   |     Client machine    |  |
+|   |      Ubuntu 24.04         |   |     Ubuntu 24.04      |  |
+|   |      10.0.1.10            |<--|     10.0.1.20         |  |
+|   |      UFW enabled          |   |     Ping source       |  |
+|   +---------------------------+   +-----------------------+  |
+|                                                              |
+|        ICMP communication                                    |
+|        Allow / Block using UFW on EC2-1                      |
++--------------------------------------------------------------+
+```
+
+> The IP addresses are examples. Replace them with the actual private IP addresses of your instances.
+
+### Create two EC2 instances
+
+| Configuration | EC2-1 | EC2-2 |
+|---------------|-------|-------|
+| AMI | Ubuntu 24.04 | Ubuntu 24.04 |
+| Instance type | t2.micro | t2.micro |
+| VPC | Same VPC | Same VPC |
+| Subnet | Same subnet | Same subnet |
+| Security Group | Same SG | Same SG |
+
+#### Security Group configuration
+
+Configure these inbound rules:
+
+| Type | Protocol | Port | Source |
+|------|----------|------|--------|
+| SSH | TCP | 22 | Your public IP |
+| All ICMP – IPv4 | ICMP | All | VPC CIDR (for example `10.0.0.0/16`) |
+
+Use your actual VPC CIDR instead.
+
+> **Important:** AWS Security Groups must allow ICMP traffic for this lab. Otherwise, ping may fail before the packet reaches UFW. Also ensure the subnet routing allows the two instances to communicate.
+
+### Connect to both instances
 
 ```bash
-nmap -Pn <server-ip>
+# EC2-1
+ssh -i lab-key.pem ubuntu@<EC2-1-PUBLIC-IP>
+
+# EC2-2
+ssh -i lab-key.pem ubuntu@<EC2-2-PUBLIC-IP>
 ```
 
-> [!CAUTION]
-> Only scan systems that you own or have written permission to test.
-
-### Docker and Firewalls: A Common Trap
-
-Docker publishes container ports by editing the firewall rules directly. A port published with `-p 8080:80` may be **reachable from the internet even though `ufw` does not allow it**, because Docker's rules bypass `ufw`. For Docker hosts, bind published ports to localhost when you do not want them public:
+Find the private IP address of each instance:
 
 ```bash
-docker run -p 127.0.0.1:8080:80 nginx
+hostname -I
 ```
 
-Also use a cloud security group as an outer layer. You will revisit this in the container security module.
+Or:
+
+```bash
+ip addr show
+```
+
+For this example:
+
+```text
+EC2-1: 10.0.1.10
+EC2-2: 10.0.1.20
+```
+
+### Install UFW on EC2-1
+
+Execute the following on **EC2-1**.
+
+```bash
+# Update packages
+sudo apt update
+
+# Install UFW
+sudo apt install ufw -y
+
+# Allow SSH
+sudo ufw allow 22/tcp
+
+# Set default policies
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+# Enable UFW
+sudo ufw enable
+
+# Verify
+sudo ufw status verbose
+```
+
+Expected output:
+
+```text
+Status: active
+
+Default: deny (incoming), allow (outgoing), disabled (routed)
+```
+
+### Test communication before blocking
+
+Go to **EC2-2** and execute:
+
+```bash
+ping 10.0.1.10
+```
+
+Expected output:
+
+```text
+64 bytes from 10.0.1.10: icmp_seq=1 ttl=64 time=0.5 ms
+64 bytes from 10.0.1.10: icmp_seq=2 ttl=64 time=0.4 ms
+```
+
+Result: **Ping successful** ✅
+
+EC2-2 sends an ICMP Echo Request to EC2-1, and EC2-1 responds with an ICMP Echo Reply. The communication works because the AWS Security Group allows ICMP and UFW has not been configured to block ping requests.
+
+Press `Ctrl + C` to stop ping.
+
+### Block all incoming ping requests using UFW
+
+Go to **EC2-1** and open the UFW configuration file:
+
+```bash
+sudo nano /etc/ufw/before.rules
+```
+
+Find the ICMP section:
+
+```text
+# ok icmp codes for INPUT
+```
+
+Find the existing Echo Request ACCEPT rule:
+
+```text
+-A ufw-before-input -p icmp --icmp-type echo-request -j ACCEPT
+```
+
+Add the following DROP rule **immediately before** that ACCEPT rule:
+
+```text
+-A ufw-before-input -p icmp --icmp-type echo-request -j DROP
+```
+
+Save the file and reload UFW:
+
+```bash
+sudo ufw reload
+```
+
+Now go to **EC2-2**:
+
+```bash
+ping 10.0.1.10
+```
+
+Expected result:
+
+```text
+Request timeout
+Request timeout
+Request timeout
+```
+
+Result: **Ping blocked** ❌
+
+What happened:
+
+1. EC2-2 sends an ICMP Echo Request.
+2. EC2-1 receives the packet.
+3. The UFW-managed firewall chain checks the incoming packet.
+4. The DROP rule matches the ICMP Echo Request.
+5. The firewall silently discards the packet.
+6. EC2-2 does not receive an Echo Reply.
+
+### Block ping requests from a specific IP
+
+Suppose you want to block ping only from EC2-2, while allowing other machines to ping EC2-1.
+
+On **EC2-1**, edit:
+
+```bash
+sudo nano /etc/ufw/before.rules
+```
+
+Use this rule:
+
+```text
+-A ufw-before-input -s 10.0.1.20 -p icmp --icmp-type echo-request -j DROP
+```
+
+Make sure this rule is placed **before** the general ICMP Echo Request ACCEPT rule. If you previously added the rule that blocks all incoming ping requests, comment it out or remove it for this test.
+
+Reload:
+
+```bash
+sudo ufw reload
+```
+
+Expected result:
+
+| Source machine | Destination | Result |
+|----------------|-------------|--------|
+| EC2-2 – 10.0.1.20 | EC2-1 – 10.0.1.10 | Blocked |
+| EC2-3 – 10.0.1.30 | EC2-1 – 10.0.1.10 | Allowed |
+
+> EC2-3 is an optional third machine for testing. Its ping will work provided the security group, routing and other firewall rules allow it.
+
+### Allow ping requests again
+
+Go back to **EC2-1** and open:
+
+```bash
+sudo nano /etc/ufw/before.rules
+```
+
+Comment out or remove the DROP rule:
+
+```text
+# -A ufw-before-input -s 10.0.1.20 -p icmp --icmp-type echo-request -j DROP
+```
+
+Reload UFW:
+
+```bash
+sudo ufw reload
+```
+
+Now go to **EC2-2**:
+
+```bash
+ping 10.0.1.10
+```
+
+Result: **Ping successful again** ✅ — the incoming Echo Request is now allowed by the existing ICMP rules.
+
+### Verify firewall rules
+
+On **EC2-1**:
+
+```bash
+sudo ufw status verbose
+```
+
+View the underlying firewall chain:
+
+```bash
+sudo iptables -L ufw-before-input -n -v
+```
+
+This demonstrates that UFW manages rules in the underlying Linux firewall infrastructure.
+
+### Lab result
+
+| Experiment | Expected result |
+|------------|-----------------|
+| Initial ping | Successful |
+| Block all ICMP Echo Requests | Failed |
+| Block only EC2-2 IP | EC2-2 blocked |
+| Ping from another permitted machine | Successful |
+| Remove DROP rule | Successful again |
+
+**Lab conclusion:** Students will understand how to configure a Linux firewall, control incoming traffic, filter network communication based on source IP addresses, and use UFW configuration files to manage ICMP traffic.
+
+---
+
+## Student practice exercises
+·
+
+**Practical exercise tracker: 0 / 15**
+
+- [ ] Install UFW on an Ubuntu machine.
+- [ ] Enable UFW and configure default incoming and outgoing policies.
+- [ ] Allow SSH traffic on port 22.
+- [ ] Allow HTTP and HTTPS traffic.
+- [ ] Block incoming traffic on port 8080.
+- [ ] Allow UDP traffic on port 53.
+- [ ] Allow incoming connections only from a specific IP address.
+- [ ] Block a specific IP address.
+- [ ] Configure an outgoing rule to block TCP port 25.
+- [ ] Delete an existing firewall rule.
+- [ ] Enable firewall logging and inspect the logs.
+- [ ] Create two EC2 instances and test ping communication.
+- [ ] Block all incoming ICMP Echo Requests.
+- [ ] Block ping requests from only one source IP.
+- [ ] Remove the DROP rule and restore ping communication.
+
+---
+
+## Interview questions and answers
+
+**Q1. What is UFW?**
+UFW stands for Uncomplicated Firewall. It is a user-friendly frontend for managing Linux firewall rules.
+
+**Q2. Is UFW an upgraded version of iptables?**
+No. UFW is a simplified firewall management interface, whereas iptables is a utility for managing traditional Linux firewall rules.
+
+**Q3. What is the difference between DROP and REJECT?**
+DROP silently discards packets, whereas REJECT discards packets and sends an error response.
+
+**Q4. What is the default incoming policy of UFW?**
+The common default policy is to deny incoming connections.
+
+**Q5. How do you allow SSH using UFW?**
+
+```bash
+sudo ufw allow 22/tcp
+```
+
+**Q6. How do you block a specific IP address?**
+
+```bash
+sudo ufw deny from 192.168.1.20
+```
+
+**Q7. Can we block ICMP using a normal UFW command?**
+There is no standard direct `ufw deny icmp` command. We can configure specific ICMP filtering rules in UFW's underlying firewall configuration.
+
+**Q8. What is the purpose of before.rules?**
+It contains firewall rules processed before UFW's normal user-defined rules.
+
+**Q9. What does `-p icmp` mean?**
+It specifies that the firewall rule matches ICMP traffic.
+
+**Q10. What does `-s` mean in iptables?**
+It specifies the source IP address.
+
+**Q11. What does `-j DROP` mean?**
+It tells the firewall to silently discard matching packets.
+
+**Q12. What happens if the AWS Security Group blocks ICMP but UFW allows it?**
+Ping will fail because the packet is blocked at the AWS Security Group level before it reaches the instance's firewall.
+
+**Q13. How do you check UFW status?**
+
+```bash
+sudo ufw status verbose
+```
+
+**Q14. How do you delete a UFW rule?**
+
+```bash
+sudo ufw delete allow 80/tcp
+```
+
+**Q15. What is the difference between incoming and outgoing traffic?**
+Incoming traffic enters the server, whereas outgoing traffic leaves the server.
+
+---
+
+> **Lab safety:** Keep SSH allowed from your administrator IP before enabling UFW. Do not experiment with SSH-blocking rules on your only remote connection. Restore the ICMP configuration after the lab, and terminate the EC2 instances when finished to avoid unnecessary AWS charges.
+
+---
+
+<!-- Reference-style badge definitions -->
+[badge-linux]: https://img.shields.io/badge/Linux-Administration-FCC624?logo=linux&logoColor=black
+[badge-ubuntu]: https://img.shields.io/badge/Ubuntu-24.04-E95420?logo=ubuntu&logoColor=white
+[badge-ufw]: https://img.shields.io/badge/Firewall-UFW-blue
+[badge-ec2]: https://img.shields.io/badge/AWS-EC2-FF9900?logo=amazonaws&logoColor=white
+[badge-level]: https://img.shields.io/badge/Level-Beginner-brightgreen
+[badge-lab]: https://img.shields.io/badge/Hands--on-Lab-purple
 
 ---
 
