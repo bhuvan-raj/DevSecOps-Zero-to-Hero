@@ -1872,224 +1872,1871 @@ Incoming traffic enters the server, whereas outgoing traffic leaves the server.
 
 ---
 
-## 10. Linux Logging and Auditing
+# Linux Logging and Auditing
 
-### Why Logs Matter
+![Linux][badge-linux] ![Ubuntu][badge-ubuntu] ![journald][badge-journald] ![auditd][badge-auditd] ![DevSecOps][badge-devsecops]
 
-Logs answer the questions that matter during and after an attack: **Who logged in? From where? What did they run? What changed?** Without logs, you cannot investigate incidents. Logs also provide the audit trail that compliance frameworks require.
+> Visibility into system activity: where Linux logs live, how to read them, how to detect suspicious SSH activity, and how to use `auditd` to record security-sensitive events.
 
-### Where Logs Live
+---
 
-| What | Debian / Ubuntu | RHEL Family |
-| :--- | :--- | :--- |
-| Logins, sudo, SSH | `/var/log/auth.log` | `/var/log/secure` |
-| General system log | `/var/log/syslog` | `/var/log/messages` |
-| Kernel messages | `/var/log/kern.log` | `/var/log/messages` |
-| Audit daemon | `/var/log/audit/audit.log` | `/var/log/audit/audit.log` |
-| Successful logins | `/var/log/wtmp` (read with `last`) | same |
-| Failed logins | `/var/log/btmp` (read with `lastb`) | same |
+## Table of Contents
 
-> [!NOTE]
-> Some newer systems do not create `/var/log/auth.log` unless `rsyslog` is installed. If the file is missing, use `journalctl`, which always works on systemd systems.
+- [Why Do Logs Matter?](#why-do-logs-matter)
+- [Understanding Linux Logging Architecture](#understanding-linux-logging-architecture)
+- [Where Are Linux Logs Stored?](#where-are-linux-logs-stored)
+- [Understanding Authentication Logs](#understanding-authentication-logs)
+- [Understanding Login History Commands](#understanding-login-history-commands)
+- [Understanding systemd Journal Logs](#understanding-systemd-journal-logs)
+- [Understanding Log Priorities](#understanding-log-priorities)
+- [Detecting Suspicious SSH Activity](#detecting-suspicious-ssh-activity)
+- [Introduction to the Linux Audit System: auditd](#introduction-to-the-linux-audit-system-auditd)
+- [Installing and Starting auditd](#installing-and-starting-auditd)
+- [Understanding Audit Rules](#understanding-audit-rules)
+- [Creating Persistent Audit Rules](#creating-persistent-audit-rules)
+- [Understanding the always,exit Rule](#understanding-the-alwaysexit-rule)
+- [Searching Audit Events](#searching-audit-events)
+- [Understanding Audit Records](#understanding-audit-records)
+- [Generating Test Audit Events](#generating-test-audit-events)
+- [Generating Audit Reports Using aureport](#generating-audit-reports-using-aureport)
+- [Understanding Log Rotation with logrotate](#understanding-log-rotation-with-logrotate)
+- [Logging and Auditing Best Practices](#logging-and-auditing-best-practices)
+- [Lynis vs auditd vs journalctl](#lynis-vs-auditd-vs-journalctl)
+- [Practical Lab: Linux Logging and Auditing](#practical-lab-linux-logging-and-auditing)
+- [Conclusion](#conclusion)
 
-### Reading Authentication Logs
+---
 
-```bash
-# Who logged in recently, and from where?
-last -n 10
+## Why Do Logs Matter?
 
-# Failed login attempts
-sudo lastb | head
+Logging is one of the most important components of Linux system administration and security.
 
-# SSH events from the journal
-sudo journalctl -u ssh --since "1 hour ago"        # RHEL family: -u sshd
+A Linux system continuously generates information about activities performed by users, applications, services, the kernel and the operating system. This information is stored in log files or collected by a logging service.
 
-# Failed SSH password attempts in the log file
-sudo grep "Failed password" /var/log/auth.log | tail -n 20
+Logs help administrators understand what happened on a system, when it happened, which user or process was involved, and whether the activity was expected or suspicious.
 
-# Which IP addresses fail the most? (a simple brute-force detector)
-sudo grep "Failed password" /var/log/auth.log | awk '{print $(NF-3)}' | sort | uniq -c | sort -nr | head
+During a security incident, logs help answer questions such as:
 
-# System errors since the last boot
-sudo journalctl -p err -b
-```
+- Who logged into the server?
+- From which IP address did the login originate?
+- Was the login successful or unsuccessful?
+- Which commands were executed?
+- When was a sensitive configuration file modified?
+- Who created or deleted a user account?
+- Was someone attempting to gain unauthorized privileges?
+- Which service failed, and when did it fail?
 
-Example of a suspicious entry:
+### Example scenario
+
+Imagine you are managing an Ubuntu EC2 instance hosting a production website. One morning, you discover that someone has modified the SSH configuration and created an unauthorized Linux user.
+
+Without logging and auditing, it may be difficult to determine:
+
+- When the modification happened.
+- Which account performed the operation.
+- Whether the account accessed the server through SSH.
+- Whether other sensitive files were modified.
+
+With proper logging and auditing, you can investigate these activities and reconstruct important parts of the incident.
+
+> **Remember:** Logs help with detection, investigation, troubleshooting and accountability. They are not a replacement for preventive security controls.
+
+---
+
+## Understanding Linux Logging Architecture
+
+Linux uses multiple components to collect, process, store and analyze system logs.
+
+### systemd-journald
+
+`systemd-journald` is the logging service provided by systemd. It collects messages from:
+
+- The Linux kernel.
+- System services.
+- Applications using the systemd journal interface.
+- Standard output and standard error of services managed by systemd.
+
+It stores these messages in the systemd journal, which can be queried using `journalctl`.
+
+### rsyslog
+
+`rsyslog` is a system logging service that collects and processes log messages. It can:
+
+- Collect logs from applications and services.
+- Store logs in different files.
+- Forward logs to remote logging servers.
+- Filter messages based on facility and severity.
+- Process logs according to configurable rules.
+
+For example, Ubuntu commonly uses rsyslog to maintain files such as `/var/log/syslog` and `/var/log/auth.log`.
+
+### auditd
+
+`auditd` is the Linux Audit daemon. Unlike ordinary application logging, the Linux Audit System can record security-relevant events generated through the kernel audit subsystem. It can monitor:
+
+- Changes to sensitive files.
+- File access.
+- File ownership and permission changes.
+- Selected system calls.
+- Command execution events when appropriate rules are configured.
+
+It is particularly useful for security investigations and compliance auditing.
+
+### Logging architecture
 
 ```text
-Jan 10 03:12:44 server sshd[2231]: Failed password for invalid user admin from 198.51.100.7 port 51132 ssh2
+        Linux Applications
+        System Services
+        Kernel Messages
+                |
+                v
+        systemd-journald
+                |
+                v
+             journalctl
+                |
+                v
+        Persistent Journal
+
+        Applications / Services
+                |
+                v
+              rsyslog
+                |
+          +-----+------+
+          |            |
+          v            v
+       Local Logs   Remote Server
+
+
+        Kernel Audit Subsystem
+                |
+                v
+              auditd
+                |
+                v
+        /var/log/audit/
+                |
+                v
+          ausearch / aureport
 ```
 
-Many failures from one IP address at 3 a.m. usually means an automated attack.
+> **Note:** This is a conceptual view. Journald and rsyslog can operate independently or together. Audit events follow a separate audit subsystem and are not simply ordinary application log messages.
 
-### The Linux Audit System: `auditd`
+---
 
-Normal logs record what programs choose to write. The **audit system** works at the **kernel level** and records security-relevant events such as file access, file changes, and command execution. A user or program cannot easily hide from it.
+## Where Are Linux Logs Stored?
+
+Most Linux distributions store log files under `/var/log/`. You can explore the directory using:
 
 ```bash
-sudo apt install auditd          # Debian/Ubuntu (RHEL family: dnf install audit)
+ls -lh /var/log/
+```
+
+Different distributions may use different logging configurations.
+
+| What | Debian / Ubuntu | RHEL Family |
+|------|-----------------|-------------|
+| Authentication logs | `/var/log/auth.log` | `/var/log/secure` |
+| General system logs | `/var/log/syslog` | `/var/log/messages` |
+| Kernel messages | `/var/log/kern.log` | `/var/log/messages` |
+| Audit logs | `/var/log/audit/audit.log` | `/var/log/audit/audit.log` |
+| Successful login records | `/var/log/wtmp` | `/var/log/wtmp` |
+| Failed login records | `/var/log/btmp` | `/var/log/btmp` |
+
+Some systems may not have all these files. For example, a minimal Ubuntu installation may use journald without installing rsyslog. In that situation, `/var/log/auth.log` and `/var/log/syslog` may not exist. You can use `journalctl` to inspect the journal.
+
+---
+
+## Understanding Authentication Logs
+
+Authentication logs contain information about user authentication and authorization activities. They are especially important when investigating:
+
+- SSH login attempts.
+- Failed password attempts.
+- Successful authentication.
+- Sudo operations.
+- Invalid usernames.
+- Authentication failures.
+
+On Ubuntu, authentication messages are commonly stored in `/var/log/auth.log`. On RHEL-based systems, they are in `/var/log/secure`.
+
+### View authentication logs
+
+```bash
+sudo less /var/log/auth.log
+```
+
+### Display the last 20 authentication events
+
+```bash
+sudo tail -n 20 /var/log/auth.log
+```
+
+### Monitor authentication logs continuously
+
+```bash
+sudo tail -f /var/log/auth.log
+```
+
+The `-f` option follows the log file and displays new entries as they are written. This is useful when testing SSH connections or sudo operations.
+
+### Search for successful SSH logins
+
+```bash
+sudo grep "Accepted" /var/log/auth.log
+```
+
+### Search for failed SSH password attempts
+
+```bash
+sudo grep "Failed password" /var/log/auth.log
+```
+
+### Search for invalid user attempts
+
+```bash
+sudo grep "Invalid user" /var/log/auth.log
+```
+
+### Search for sudo activity
+
+```bash
+sudo grep "sudo" /var/log/auth.log
+```
+
+These searches help administrators identify authentication-related activities.
+
+---
+
+## Understanding Login History Commands
+
+Linux provides several commands for examining login history.
+
+### last
+
+Reads login records from `/var/log/wtmp` and displays previous login sessions.
+
+```bash
+last
+```
+
+Display only the latest 10 records:
+
+```bash
+last -n 10
+```
+
+You may see: username, terminal or session, remote IP address or hostname, login time, logout time and session duration.
+
+### lastb
+
+Reads failed login records from `/var/log/btmp`.
+
+```bash
+sudo lastb
+```
+
+Display only the latest failed login records:
+
+```bash
+sudo lastb | head
+```
+
+This can help identify repeated unsuccessful login attempts.
+
+### who
+
+Displays users currently logged into the system.
+
+```bash
+who
+```
+
+### w
+
+Displays currently logged-in users along with their activities.
+
+```bash
+w
+```
+
+It can display logged-in users, login time, source terminal or remote host, idle time, and the current process or command.
+
+### users
+
+Displays usernames of users currently logged into the system.
+
+```bash
+users
+```
+
+---
+
+## Understanding systemd Journal Logs
+
+Modern Linux distributions commonly use systemd-journald for collecting system logs. The `journalctl` command allows administrators to query these logs.
+
+Unlike traditional log files, the systemd journal stores structured log records containing information such as timestamps, service names, process IDs and priorities.
+
+| Goal | Command |
+|------|---------|
+| View all journal entries | `sudo journalctl` |
+| Logs from the current boot | `sudo journalctl -b` |
+| Logs from the previous boot | `sudo journalctl -b -1` |
+| Latest 50 entries | `sudo journalctl -n 50` |
+| Monitor logs continuously | `sudo journalctl -f` |
+| Error-level messages | `sudo journalctl -p err` |
+| Error messages from the current boot | `sudo journalctl -p err -b` |
+| Logs from the last hour | `sudo journalctl --since "1 hour ago"` |
+
+> `journalctl -f` is similar to `tail -f`: it continuously displays newly generated journal entries.
+
+Specify a time range:
+
+```bash
+sudo journalctl --since "2026-11-20 08:00:00" \
+                --until "2026-11-20 09:00:00"
+```
+
+### View logs for a particular service
+
+Inspect NGINX logs:
+
+```bash
+sudo journalctl -u nginx
+```
+
+Inspect SSH service logs.
+
+Ubuntu:
+
+```bash
+sudo journalctl -u ssh
+```
+
+RHEL:
+
+```bash
+sudo journalctl -u sshd
+```
+
+Display only recent NGINX service logs:
+
+```bash
+sudo journalctl -u nginx --since "1 hour ago"
+```
+
+---
+
+## Understanding Log Priorities
+
+Linux logging systems classify messages according to their severity. The traditional syslog severity levels are:
+
+| Priority | Name | Description |
+|----------|------|-------------|
+| 0 | Emergency | System is unusable. |
+| 1 | Alert | Immediate action is required. |
+| 2 | Critical | Critical system condition. |
+| 3 | Error | Error condition occurred. |
+| 4 | Warning | Warning condition. |
+| 5 | Notice | Normal but significant event. |
+| 6 | Informational | General information. |
+| 7 | Debug | Detailed debugging information. |
+
+For example, display warning-level messages and more severe messages:
+
+```bash
+sudo journalctl -p warning
+```
+
+Display error-level messages and more severe messages:
+
+```bash
+sudo journalctl -p err
+```
+
+---
+
+## Detecting Suspicious SSH Activity
+
+Authentication logs can help identify potential brute-force attacks. A brute-force attack occurs when an attacker repeatedly attempts to authenticate using different passwords or usernames until a valid combination is discovered.
+
+Consider the following log entry:
+
+```text
+Nov 20 03:12:44 server sshd[2231]: Failed password for invalid user admin from 198.51.100.7 port 51132 ssh2
+```
+
+| Field | Meaning |
+|-------|---------|
+| `Nov 20 03:12:44` | Date and time of the event |
+| `server` | Hostname |
+| `sshd[2231]` | SSH daemon and process ID |
+| `Failed password` | Authentication failed |
+| `invalid user admin` | Attempted username does not exist |
+| `198.51.100.7` | Source IP address |
+| `port 51132` | Client-side source port |
+| `ssh2` | SSH protocol version |
+
+This entry indicates that someone attempted to authenticate using a nonexistent username.
+
+### Count failed password attempts (Ubuntu)
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | wc -l
+```
+
+### Identify IP addresses generating failed password attempts
+
+```bash
+sudo grep "Failed password" /var/log/auth.log \
+| awk '{print $(NF-3)}' \
+| sort \
+| uniq -c \
+| sort -nr
+```
+
+How it works:
+
+- `grep` filters failed password messages.
+- `awk` extracts the source IP address.
+- `sort` groups identical IP addresses together.
+- `uniq -c` counts occurrences.
+- `sort -nr` sorts the counts in descending order.
+
+### Identify repeated invalid usernames
+
+```bash
+sudo grep "Invalid user" /var/log/auth.log \
+| awk '{print $(NF-5)}' \
+| sort \
+| uniq -c \
+| sort -nr
+```
+
+> The exact log format can vary, so always verify extracted fields against your distribution's actual log entries.
+
+> **Important:** Repeated failed logins can indicate brute-force activity, but they can also result from misconfigured automation, expired credentials or legitimate users entering incorrect passwords. Investigate before blocking an IP address.
+
+---
+
+## Introduction to the Linux Audit System: auditd
+
+Normal application and system logs record information that programs and services choose to generate. However, sometimes we need more detailed information about security-sensitive activities, such as:
+
+- Who modified `/etc/passwd`?
+- Who changed the permissions of `/etc/shadow`?
+- Who modified the SSH configuration?
+- Which process accessed a sensitive file?
+- Which user executed a monitored system call?
+
+This is where the **Linux Audit System** becomes useful. It is a kernel-supported auditing framework that records security-related events according to configured audit rules. `auditd` is the userspace daemon responsible for collecting and writing audit events to audit log files.
+
+It is commonly used for:
+
+- Monitoring sensitive file changes.
+- Tracking changes to user accounts.
+- Monitoring modifications to sudo policies.
+- Recording selected system calls.
+- Investigating security incidents.
+- Meeting audit and compliance requirements.
+
+### How auditd works
+
+```text
+       User / Application
+               |
+               v
+        System Call
+               |
+               v
+        Linux Kernel
+               |
+               v
+       Audit Subsystem
+               |
+        Matching Rules?
+               |
+               v
+        Audit Events
+               |
+               v
+            auditd
+               |
+               v
+ /var/log/audit/audit.log
+               |
+          +----+----+
+          |         |
+          v         v
+       ausearch  aureport
+```
+
+The audit subsystem evaluates configured rules and generates matching audit events. The daemon collects and writes these events.
+
+> **Important:** auditd does not automatically record every command or every file access. You must configure appropriate rules for the activities you want to monitor.
+
+---
+
+## Installing and Starting auditd
+
+Ubuntu / Debian:
+
+```bash
+sudo apt update
+sudo apt install auditd audispd-plugins -y
+```
+
+RHEL-based distributions:
+
+```bash
+sudo dnf install audit -y
+```
+
+Start the service:
+
+```bash
 sudo systemctl enable --now auditd
 ```
 
-### Writing Audit Rules
+Check its status:
 
-A **watch rule** monitors a file or directory:
-
-```text
--w <path>  -p <permissions>  -k <key name>
+```bash
+sudo systemctl status auditd
 ```
 
-| Permission | Meaning |
-| :---: | :--- |
-| `r` | Read |
-| `w` | Write |
-| `x` | Execute |
-| `a` | Attribute change (ownership, permissions) |
+Check the audit daemon version:
 
-Create a rules file that watches the most sensitive files:
+```bash
+sudo auditctl -v
+```
+
+The default audit log location is `/var/log/audit/audit.log`. View it with:
+
+```bash
+sudo less /var/log/audit/audit.log
+```
+
+---
+
+## Understanding Audit Rules
+
+Audit rules define which activities the Linux Audit System should monitor. For example, you may want to monitor modifications to `/etc/passwd`. Instead of continuously checking the file manually, you can create an audit rule that generates an event whenever a matching modification occurs.
+
+There are two commonly discussed approaches: **watch rules** and **syscall-based rules**.
+
+### Watch rules
+
+A watch rule monitors a specified file or directory.
+
+```bash
+-w <path> -p <permissions> -k <key>
+```
+
+| Parameter | Meaning |
+|-----------|---------|
+| `-w` | Specifies the file or directory to monitor. |
+| `-p` | Specifies the permissions or types of activity to monitor. |
+| `-k` | Assigns a searchable key to the rule. |
+
+Permission flags:
+
+| Permission | Meaning |
+|------------|---------|
+| `r` | Read access |
+| `w` | Write access |
+| `x` | Execute access |
+| `a` | Attribute changes such as ownership or permission changes |
+
+Example:
+
+```bash
+sudo auditctl -w /etc/passwd -p wa -k passwd_monitor
+```
+
+Breakdown:
+
+- `auditctl`: Command-line utility used to manage audit rules.
+- `-w`: Create a watch on the specified path.
+- `/etc/passwd`: File being monitored.
+- `-p wa`: Monitor write and attribute changes.
+- `-k passwd_monitor`: Assign the rule the key `passwd_monitor`.
+
+This rule monitors changes to the `/etc/passwd` file. For example, when a user is created or deleted, the file may be modified and a corresponding audit event can be generated.
+
+> **Note:** Legacy `-w` watch rules are supported but deprecated for new rule design on many modern audit installations because they can be less efficient. For newer environments, syscall-based rules are generally preferred.
+
+### Syscall-based rules
+
+System calls are requests made by programs to the Linux kernel to perform operations such as opening files, changing permissions, creating processes and modifying files. The Linux Audit System can monitor selected system calls.
+
+```bash
+-a <action>,<filter> -S <syscall> -F <field=value> -k <key>
+```
+
+| Parameter | Meaning |
+|-----------|---------|
+| `-a` | Adds an audit rule. |
+| `always,exit` | Generates an event when a matching system call exits. |
+| `-S` | Specifies the system call to monitor. |
+| `-F` | Applies a filter to the event. |
+| `-k` | Assigns a searchable key. |
+
+Example:
+
+```bash
+sudo auditctl -a always,exit -F arch=b64 \
+-S chmod -S fchmod -S fchmodat \
+-k permission_changes
+```
+
+Breakdown:
+
+- `-a always,exit`: Generate an audit event when a matching system call exits.
+- `-F arch=b64`: Apply the rule to 64-bit system calls.
+- `-S chmod`, `-S fchmod`, `-S fchmodat`: Monitor these system calls.
+- `-k permission_changes`: Assign the key `permission_changes`.
+
+This rule monitors selected system calls responsible for changing file permissions. For systems that support multiple architectures, consider whether equivalent 32-bit rules are needed.
+
+---
+
+## Creating Persistent Audit Rules
+
+Rules created using `auditctl` directly are generally runtime rules. They may not survive a reboot. To make rules persistent, store them under `/etc/audit/rules.d/`.
+
+Create a rules file:
 
 ```bash
 sudo nano /etc/audit/rules.d/hardening.rules
 ```
 
+Add the following rules:
+
 ```text
 # Account and identity changes
 -w /etc/passwd -p wa -k identity
 -w /etc/shadow -p wa -k identity
--w /etc/group  -p wa -k identity
+-w /etc/group -p wa -k identity
 
 # Administrator privilege changes
--w /etc/sudoers   -p wa -k sudoers
+-w /etc/sudoers -p wa -k sudoers
 -w /etc/sudoers.d/ -p wa -k sudoers
 
 # SSH configuration changes
 -w /etc/ssh/sshd_config -p wa -k sshd_config
+-w /etc/ssh/sshd_config.d/ -p wa -k sshd_config
 ```
 
-Load and verify the rules:
+> These are legacy watch-rule examples for teaching purposes. On modern systems, you can convert them to syscall-based rules using `path` and `dir` filters where supported.
+
+Load the rules:
 
 ```bash
-sudo augenrules --load      # load rules from /etc/audit/rules.d/
-sudo auditctl -l            # list active rules
+sudo augenrules --load
 ```
 
-### Searching Audit Events
+Verify active rules:
 
 ```bash
-# Create a test event: adding a user modifies /etc/passwd
-sudo useradd audittest
-
-# Search by key
-sudo ausearch -k identity -i | tail -n 20
-
-# Summary report
-sudo aureport --summary
-
-# Cleanup
-sudo userdel audittest
+sudo auditctl -l
 ```
 
-An audit record tells you which **user**, using which **program**, changed which **file**, and at what **time**.
+Check the audit daemon:
 
-### Logging Best Practices
+```bash
+sudo systemctl status auditd
+```
 
-- Keep logs long enough to investigate incidents (`logrotate` manages rotation).
-- Protect logs from tampering. Attackers often try to delete them.
-- **Ship logs to a central location** so they survive if a server is compromised. You will build this later with Loki and Grafana.
-- Alert on important events: repeated login failures, new users, changes to `sudoers`, and so on.
+> **Important:** If the audit system is configured with immutable rules using `-e 2`, rules cannot be changed until the next reboot. Do not enable immutable mode until you have validated your complete rule set and understand the recovery implications.
 
 ---
 
-## 11. File Integrity Monitoring
+## Understanding the always,exit Rule
 
-### What Is File Integrity Monitoring (FIM)?
+One important concept in auditd is `always,exit`. It is an action/filter combination used in syscall-based audit rules.
 
-After breaking in, attackers often **modify system files** (replace `ls` or `ssh` with a malicious version, add a backdoor, change configuration). FIM tools detect this.
+- **always:** The rule requests that a matching event be generated rather than applying a conditional action such as never recording it.
+- **exit:** The event is evaluated when the monitored system call exits.
 
-**How it works:**
-
-1. Take a **baseline**: record a cryptographic hash (fingerprint) of important files while the system is known to be clean.
-2. Later, **recompute** the hashes and compare.
-3. Any difference is reported: a file was **added**, **removed**, or **changed**.
+For example:
 
 ```bash
-# A hash is a fingerprint. Changing even one character changes it completely.
+sudo auditctl -a always,exit -F arch=b64 \
+-S chmod -k chmod_monitor
+```
+
+When a matching `chmod` system call exits, the audit subsystem generates an event. This allows the audit system to capture details associated with the system call, including its result.
+
+The audit event may contain:
+
+- Process ID.
+- User ID.
+- Effective user ID.
+- Executed command.
+- System call information.
+- Success or failure status.
+- Relevant file path.
+
+---
+
+## Searching Audit Events
+
+Once audit rules are configured, you can search the events generated by those rules using `ausearch`.
+
+| Goal | Command |
+|------|---------|
+| Search using an audit key | `sudo ausearch -k identity` |
+| Human-readable output | `sudo ausearch -k identity -i` |
+| SSH configuration modifications | `sudo ausearch -k sshd_config -i` |
+| Sudo policy changes | `sudo ausearch -k sudoers -i` |
+| Permission changes | `sudo ausearch -k permission_changes -i` |
+| Events from today | `sudo ausearch --start today -i` |
+| Events for a specific user ID | `sudo ausearch -ua 1001 -i` |
+
+> The `-i` option interprets certain numeric values and displays them in a more readable format. Replace the user ID with the actual UID you want to investigate.
+
+---
+
+## Understanding Audit Records
+
+Audit events can contain multiple records associated with the same event ID. Consider a simplified example:
+
+```text
+type=SYSCALL msg=audit(1795160000.123:450):
+arch=c000003e syscall=90 success=yes
+pid=2231 uid=1001 auid=1001
+comm="chmod" exe="/usr/bin/chmod"
+
+type=PATH msg=audit(1795160000.123:450):
+name="/var/www/index.html"
+```
+
+| Field | Meaning |
+|-------|---------|
+| `type=SYSCALL` | Indicates a system-call audit record. |
+| `msg=audit(...)` | Contains the event timestamp and event serial number. |
+| `syscall=90` | System-call number, architecture-dependent. |
+| `success=yes` | Indicates that the system call succeeded. |
+| `pid=2231` | Process ID. |
+| `uid=1001` | User ID associated with the process. |
+| `auid=1001` | Login audit UID, which can help identify the original authenticated user. |
+| `comm="chmod"` | Command name. |
+| `exe="/usr/bin/chmod"` | Executable path. |
+| `name="/var/www/index.html"` | File path associated with the event. |
+
+The event ID in the timestamp field allows related audit records to be correlated. The `auid` field is particularly useful because it can preserve the original login identity even when a user executes a command through `sudo`.
+
+> **Note:** Numeric syscall values depend on architecture. Use `ausearch -i` for more readable interpretations.
+
+---
+
+## Generating Test Audit Events
+
+A simple practical exercise.
+
+First, make sure you have the identity watch rule loaded:
+
+```bash
+sudo auditctl -l
+```
+
+Create a test user:
+
+```bash
+sudo useradd audittest
+```
+
+This operation normally modifies account databases such as `/etc/passwd` and `/etc/shadow`. Search for the generated event:
+
+```bash
+sudo ausearch -k identity -i
+```
+
+You should find events associated with the monitored account files.
+
+You can also test a permission modification:
+
+```bash
+sudo chmod 600 /tmp/audit-test.txt
+```
+
+If you configured a suitable syscall rule for permission changes, search using:
+
+```bash
+sudo ausearch -k permission_changes -i
+```
+
+Cleanup:
+
+```bash
+sudo userdel audittest
+sudo rm -f /tmp/audit-test.txt
+```
+
+> The cleanup operation can generate additional audit events.
+
+---
+
+## Generating Audit Reports Using aureport
+
+The `aureport` command generates summary reports from audit logs. Instead of manually searching individual events, administrators can use it to understand audit activity.
+
+| Goal | Command |
+|------|---------|
+| General summary | `sudo aureport --summary` |
+| Authentication reports | `sudo aureport -au` |
+| Failed authentication attempts | `sudo aureport -au --failed` |
+| Executable reports | `sudo aureport -x` |
+| File access reports | `sudo aureport -f` |
+| User activity reports | `sudo aureport -u` |
+
+These reports help administrators identify suspicious activity and understand the security events recorded by the audit subsystem.
+
+---
+
+## Understanding Log Rotation with logrotate
+
+Linux systems continuously generate logs. Over time, log files can become very large and consume significant disk space. For example:
+
+```text
+/var/log/syslog
+/var/log/auth.log
+/var/log/audit/audit.log
+```
+
+Linux commonly uses `logrotate` to manage log files. It can:
+
+- Rotate old log files.
+- Compress archived logs.
+- Remove logs older than a configured retention period.
+- Create new log files.
+- Manage rotation based on size or time.
+
+Install (or check) logrotate:
+
+```bash
+sudo apt install logrotate -y
+```
+
+Check the main configuration:
+
+```bash
+sudo cat /etc/logrotate.conf
+```
+
+Application-specific configurations are commonly stored under `/etc/logrotate.d/`:
+
+```bash
+ls -l /etc/logrotate.d/
+```
+
+Check the NGINX log rotation configuration:
+
+```bash
+sudo cat /etc/logrotate.d/nginx
+```
+
+Test logrotate configuration without performing actual rotation:
+
+```bash
+sudo logrotate -d /etc/logrotate.conf
+```
+
+Force a rotation for testing:
+
+```bash
+sudo logrotate -f /etc/logrotate.conf
+```
+
+> Use force rotation carefully, particularly on production systems.
+
+> **Important:** auditd has its own log rotation and retention configuration. Its logs should be managed using auditd's supported settings rather than assuming that ordinary logrotate rules are appropriate.
+
+---
+
+## Logging and Auditing Best Practices
+
+Logging is useful only when logs are properly collected, protected, retained and monitored.
+
+### Enable persistent logging
+
+Ensure that important logs survive system reboots. For journald, check:
+
+```bash
+sudo journalctl --disk-usage
+```
+
+Persistent journal storage is commonly configured through `/etc/systemd/journald.conf`. The `Storage=persistent` setting enables persistent journal storage when configured and supported.
+
+### Protect log files
+
+Logs may contain sensitive information about users, IP addresses and system activity. Restrict access to sensitive log files and directories:
+
+```bash
+sudo ls -ld /var/log
+sudo ls -l /var/log/auth.log
+```
+
+Avoid granting unnecessary users permission to modify security logs.
+
+### Configure appropriate retention
+
+Keep logs long enough to support investigations and applicable compliance requirements. Use log rotation and retention policies to manage storage.
+
+### Monitor failed authentication attempts
+
+Regularly investigate repeated failed SSH login attempts:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | tail
+```
+
+### Monitor sensitive configuration files
+
+Use auditd to monitor important files such as:
+
+- `/etc/passwd`
+- `/etc/shadow`
+- `/etc/sudoers`
+- `/etc/ssh/sshd_config`
+- Critical application configuration files.
+
+### Forward logs to a centralized logging server
+
+Do not depend entirely on local logs. If an attacker compromises a server, they may attempt to delete or modify locally stored logs. Forwarding logs to a separate, protected logging platform makes investigations more reliable.
+
+Examples include:
+
+- Grafana Loki.
+- Elasticsearch and Logstash.
+- Splunk.
+- Graylog.
+
+In later modules, you can explore centralized logging using Grafana Loki and Grafana.
+
+### Configure alerts
+
+Generate alerts for important security events, such as:
+
+- Repeated SSH authentication failures.
+- Creation of unexpected user accounts.
+- Changes to sudoers policies.
+- Modifications to SSH configuration.
+- Unexpected service failures.
+- Suspicious privilege escalation activity.
+
+### Protect audit configuration
+
+Restrict who can modify audit rules and access audit logs. Consider forwarding audit events to a remote logging platform and using appropriate integrity and retention controls.
+
+### Synchronize system time
+
+Accurate timestamps are essential when correlating events across multiple servers. Use a reliable time synchronization service such as chrony or systemd-timesyncd.
+
+### Test your logging configuration
+
+Do not assume that logs are being collected correctly. Generate test events, verify that they appear in the appropriate log source, and confirm that your alerting and retention mechanisms work.
+
+---
+
+## Lynis vs auditd vs journalctl
+
+These tools serve different purposes and complement each other.
+
+| Feature | Lynis | auditd | journalctl |
+|---------|-------|--------|------------|
+| Primary purpose | Security posture assessment | Security event auditing | System journal inspection |
+| Identifies misconfigurations | Yes | Not its primary purpose | Not its primary purpose |
+| Monitors configured file changes | Through security checks | Yes | Only when relevant messages are generated |
+| Records configured syscall activity | No | Yes | Not its primary purpose |
+| Displays service logs | No | No | Yes |
+| Provides hardening recommendations | Yes | No | No |
+| Typical usage | Periodic security audits | Continuous event monitoring | Troubleshooting and log analysis |
+
+### Example
+
+Imagine an administrator changes the SSH configuration:
+
+```bash
+sudo nano /etc/ssh/sshd_config
+```
+
+- **journalctl** can display SSH service messages, including errors or reload activity.
+- **auditd** can record the file modification if a matching rule is configured.
+- **Lynis** can examine the resulting SSH configuration during a security audit and identify insecure settings.
+
+---
+
+## Practical Lab: Linux Logging and Auditing
+
+**Scenario:** You are managing an Ubuntu EC2 instance hosting a website using NGINX. Your responsibility is to configure logging and auditing so that important security-related activities can be investigated.
+
+### Task 1: Explore Linux logs
+
+- Navigate to `/var/log`.
+- Identify authentication, system and kernel logs.
+- Check whether rsyslog is installed.
+- Identify the role of journald.
+
+### Task 2: Investigate authentication activity
+
+```bash
+last -n 10
+sudo lastb | head
+sudo journalctl -u ssh --since "1 hour ago"
+```
+
+Identify successful and unsuccessful login attempts.
+
+### Task 3: Monitor SSH activity
+
+Open two terminal sessions. In the first terminal:
+
+```bash
+sudo journalctl -u ssh -f
+```
+
+In the second terminal, perform an SSH login attempt. Observe the events generated by the SSH service.
+
+### Task 4: Install and configure auditd
+
+Install auditd and enable the service. Create persistent audit rules to monitor:
+
+- `/etc/passwd`
+- `/etc/shadow`
+- `/etc/group`
+- `/etc/sudoers`
+- `/etc/ssh/sshd_config`
+
+Load and verify the rules.
+
+### Task 5: Monitor file modifications
+
+Create an audit rule for a test file. Modify its contents and permissions. Search the audit logs and identify the event.
+
+### Task 6: Investigate audit events
+
+```bash
+sudo ausearch
+sudo aureport --summary
+```
+
+Identify the user, process, file path and event timestamp.
+
+### Task 7: Configure log rotation
+
+Explore the logrotate configuration. Identify how NGINX logs are rotated and how old logs are compressed.
+
+### Task 8: Document your findings
+
+Prepare a report containing:
+
+- Authentication log analysis.
+- Successful and failed login information.
+- Configured audit rules.
+- Generated audit events.
+- Log rotation configuration.
+- Security improvements recommended for the server.
+
+---
+
+## Conclusion
+
+Linux logging and auditing are essential for maintaining visibility into system activities and investigating security incidents.
+
+Authentication logs help administrators investigate login activity, journald helps troubleshoot services, rsyslog collects and forwards system messages, and auditd records configured security-sensitive events.
+
+By combining these tools with proper log retention, access restrictions, centralized logging and alerting, administrators can build a more reliable security monitoring environment.
+
+> **Remember:** Logging tells you what the system reported, while auditing helps you establish a detailed record of specifically monitored security activities. Both are essential for effective Linux security monitoring.
+
+---
+
+<!-- Reference-style badge definitions -->
+[badge-linux]: https://img.shields.io/badge/Linux-Logging-FCC624?logo=linux&logoColor=black
+[badge-ubuntu]: https://img.shields.io/badge/Ubuntu-RHEL-E95420?logo=ubuntu&logoColor=white
+[badge-journald]: https://img.shields.io/badge/systemd-journald-blue
+[badge-auditd]: https://img.shields.io/badge/Audit-auditd-red
+[badge-devsecops]: https://img.shields.io/badge/Focus-DevSecOps-purple
+---
+# File Integrity Monitoring (FIM)
+
+![Linux][badge-linux] ![AIDE][badge-aide] ![Ubuntu][badge-ubuntu] ![RHEL][badge-rhel] ![DevSecOps][badge-devsecops]
+
+> Detecting unauthorized or unexpected changes to files and directories on Linux: how FIM works, how to set up and operate AIDE, and how FIM fits alongside auditd in a DevSecOps workflow.
+
+---
+
+## Table of Contents
+
+- [What Is File Integrity Monitoring?](#what-is-file-integrity-monitoring)
+- [Why Is File Integrity Monitoring Important?](#why-is-file-integrity-monitoring-important)
+- [How Does File Integrity Monitoring Work?](#how-does-file-integrity-monitoring-work)
+- [Understanding File Attributes Monitored by FIM](#understanding-file-attributes-monitored-by-fim)
+- [Types of File Integrity Monitoring](#types-of-file-integrity-monitoring)
+- [Introduction to AIDE](#introduction-to-aide)
+- [Understanding AIDE Architecture](#understanding-aide-architecture)
+- [Installing AIDE](#installing-aide)
+- [Understanding AIDE Configuration](#understanding-aide-configuration)
+- [Creating the Initial AIDE Baseline](#creating-the-initial-aide-baseline)
+- [Performing an AIDE Integrity Check](#performing-an-aide-integrity-check)
+- [Understanding AIDE Results](#understanding-aide-results)
+- [Practical Exercise: Detecting Unauthorized File Changes](#practical-exercise-detecting-unauthorized-file-changes)
+- [Updating the AIDE Baseline](#updating-the-aide-baseline)
+- [Automating AIDE Checks](#automating-aide-checks)
+- [Protecting the AIDE Database](#protecting-the-aide-database)
+- [AIDE vs auditd](#aide-vs-auditd)
+- [Additional Integrity Verification Tools](#additional-integrity-verification-tools)
+- [File Integrity Monitoring in DevSecOps](#file-integrity-monitoring-in-devsecops)
+- [Best Practices for File Integrity Monitoring](#best-practices-for-file-integrity-monitoring)
+- [Conclusion](#conclusion)
+
+---
+
+## 11.What Is File Integrity Monitoring?
+
+**File Integrity Monitoring (FIM)** is a security mechanism used to detect unauthorized or unexpected changes to files and directories in an operating system.
+
+In Linux, important system files contain information about users, authentication, services, permissions and security configurations. Attackers who compromise a Linux server may attempt to modify these files to maintain access, hide their activities or weaken existing security controls.
+
+For example, an attacker who gains administrative access might:
+
+- Replace legitimate system binaries with malicious versions.
+- Modify SSH configuration to enable unauthorized remote access.
+- Add a backdoor user account.
+- Modify sudoers to grant unauthorized administrative privileges.
+- Change firewall configurations.
+- Modify application configuration files.
+- Add malicious scripts to startup directories.
+- Modify web application files to inject malicious code.
+
+Traditional logging and monitoring can help detect some of these activities. However, it is also important to have a mechanism that can independently verify whether important files have changed. This is where FIM becomes useful.
+
+FIM establishes a **trusted baseline** of important files and periodically compares the current filesystem state against that baseline. If a file is added, deleted or modified, the FIM tool reports the difference.
+
+---
+
+## Why Is File Integrity Monitoring Important?
+
+Consider a scenario where you manage an Ubuntu EC2 instance hosting a production application. An attacker compromises the server and replaces a legitimate executable, for example `/usr/bin/ls`, with a malicious version. The new executable may perform malicious activities while appearing to be the normal `ls` command.
+
+Without file integrity monitoring, identifying such a modification can be difficult. With FIM:
+
+1. A trusted baseline of the original executable is created.
+2. The file is modified by an attacker.
+3. The FIM tool calculates the current file fingerprint.
+4. It compares the fingerprint with the original baseline.
+5. A difference is reported.
+
+This helps administrators identify unexpected modifications.
+
+> **Important:** FIM detects changes. It does not automatically prevent attackers from modifying files or repair compromised files.
+
+---
+
+## How Does File Integrity Monitoring Work?
+
+Most traditional FIM tools use **cryptographic hashing** to identify changes in files.
+
+A cryptographic hash function generates a fixed-length fingerprint from the contents of a file. For example, SHA-256 generates a 256-bit hash, commonly represented as a 64-character hexadecimal string. Even a small change in the original content produces a completely different hash with extremely high probability.
+
+Example:
+
+```bash
 echo "hello" | sha256sum
 echo "hellp" | sha256sum
 ```
 
-### AIDE (Advanced Intrusion Detection Environment)
+The two commands generate different hash values because the input content is different.
 
-AIDE is a popular open-source FIM tool.
-
-**Debian / Ubuntu**
+You can also calculate the hash of an actual file:
 
 ```bash
-# Install
-sudo apt install aide
-
-# Build the baseline database (this can take several minutes)
-sudo aideinit
-
-# Activate the new database as the trusted baseline
-sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
-
-# Compare the current system against the baseline
-sudo aide --check --config /etc/aide/aide.conf
+sha256sum /etc/passwd
 ```
 
-**RHEL family**
+If the file changes, its hash will generally change as well.
+
+### FIM workflow
+
+```text
+        Trusted Linux System
+                |
+                v
+       Select Important Files
+                |
+                v
+       Calculate File Hashes
+                |
+                v
+         Create Baseline
+                |
+                v
+        Store Trusted Database
+                |
+                v
+       Periodic FIM Scan
+                |
+                v
+      Calculate Current Hashes
+                |
+                v
+       Compare With Baseline
+                |
+          +-----+-----+
+          |           |
+          v           v
+       No Change    Difference
+          |           |
+          v           v
+        Passed      Alert / Report
+                      |
+                      v
+               Investigate Changes
+```
+
+---
+
+## Understanding File Attributes Monitored by FIM
+
+FIM tools can monitor more than just file contents. Depending on the configuration, they can track several filesystem attributes.
+
+| Attribute | What It Monitors |
+|-----------|------------------|
+| File checksum | Whether the file contents have changed. |
+| File size | Whether the size of the file has changed. |
+| File permissions | Whether permissions such as 644 or 755 have changed. |
+| File ownership | Whether the owner has changed. |
+| Group ownership | Whether the assigned group has changed. |
+| Modification time | Whether the file's modification timestamp has changed. |
+| Inode information | Changes in filesystem object identity. |
+| File type | Whether the object is a regular file, directory, symbolic link, etc. |
+
+For example, consider:
+
+```text
+-rw-r--r-- 1 root root 1200 Nov 20 09:00 config.conf
+```
+
+An attacker changes its permissions:
 
 ```bash
-sudo dnf install aide
+sudo chmod 777 config.conf
+```
+
+Even if the file contents remain unchanged, a properly configured FIM tool can detect the permission modification.
+
+> **Important:** Modification timestamps alone are not sufficient for integrity verification because they can be manipulated. Cryptographic checksums provide stronger evidence of content changes.
+
+---
+
+## Types of File Integrity Monitoring
+
+FIM solutions generally use different approaches.
+
+### Hash-based monitoring
+
+The tool calculates cryptographic hashes of files and compares them with previously recorded values.
+
+```bash
+sha256sum /etc/ssh/sshd_config
+```
+
+If the hash differs from the trusted baseline, the file contents may have changed.
+
+### Attribute-based monitoring
+
+The tool monitors metadata such as ownership, permissions, file size, modification time and inode information. This helps detect configuration and permission changes even when file contents remain the same.
+
+### Real-time file monitoring
+
+Some FIM solutions use Linux filesystem notification mechanisms such as **inotify** or kernel facilities such as **fanotify** to detect filesystem events as they happen. For example, a monitoring solution can detect when a file is created, modified, renamed or deleted.
+
+> Traditional AIDE scanning is generally periodic rather than real-time.
+
+---
+
+## Introduction to AIDE
+
+**AIDE (Advanced Intrusion Detection Environment)** is a free, open-source file integrity monitoring tool for Linux and Unix-like systems. It helps administrators detect unexpected changes to important files and directories.
+
+AIDE works by creating a database containing the attributes and checksums of selected filesystem objects. During subsequent scans, it compares the current filesystem against the previously generated database. If differences are identified, AIDE reports them.
+
+AIDE can monitor:
+
+- System binaries.
+- Configuration files.
+- User account databases.
+- SSH configuration.
+- Application files.
+- Web server directories.
+- File ownership and permissions.
+- File checksums.
+
+---
+
+## Understanding AIDE Architecture
+
+AIDE primarily works using two important components.
+
+### AIDE configuration file
+
+The configuration file defines:
+
+- Which directories and files should be monitored.
+- Which attributes should be checked.
+- Which directories should be excluded.
+- Which cryptographic algorithms should be used.
+- Where the AIDE database should be stored.
+
+Default configuration location:
+
+```text
+/etc/aide/aide.conf
+```
+
+### AIDE database
+
+The AIDE database stores the trusted baseline information generated during initialization. It contains the recorded attributes and checksums of monitored filesystem objects.
+
+Common database locations:
+
+```text
+/var/lib/aide/aide.db
+/var/lib/aide/aide.db.new
+```
+
+> Exact filenames and compression formats can vary by distribution and configuration.
+
+### Architecture
+
+```text
+            /etc/aide/aide.conf
+                     |
+                     v
+             AIDE Configuration
+                     |
+                     v
+              Select Files
+                     |
+                     v
+             Calculate Hashes
+                     |
+                     v
+             AIDE Database
+                     |
+                     v
+             Future AIDE Scan
+                     |
+              +------+------+
+              |             |
+              v             v
+        Current State    Baseline
+              |             |
+              +------+------+
+                     |
+                     v
+               Comparison
+                     |
+                     v
+              Change Report
+```
+
+---
+
+## Installing AIDE
+
+AIDE is available in the package repositories of many Linux distributions.
+
+### Debian / Ubuntu
+
+```bash
+sudo apt update
+sudo apt install aide -y
+aide --version
+```
+
+### RHEL family
+
+```bash
+sudo dnf install aide -y
+aide --version
+```
+
+---
+
+## Understanding AIDE Configuration
+
+AIDE uses a configuration file to determine what should be monitored. On Ubuntu and Debian:
+
+```bash
+sudo nano /etc/aide/aide.conf
+```
+
+The configuration file contains rules that specify which paths should be monitored and which attributes should be checked.
+
+AIDE supports predefined attribute groups. Some commonly used ones:
+
+| Group | Meaning |
+|-------|---------|
+| `p` | File permissions |
+| `i` | Inode information |
+| `n` | Number of hard links |
+| `u` | User ownership |
+| `g` | Group ownership |
+| `s` | File size |
+| `b` | Block count |
+| `m` | Modification time |
+| `c` | Change time |
+| `S` | Check for growing or shrinking file size |
+| `md5` | MD5 checksum |
+| `sha256` | SHA-256 checksum |
+| `sha512` | SHA-512 checksum |
+
+AIDE combines these attributes into predefined groups:
+
+- `R`: Commonly used for monitoring regular files.
+- `L`: Commonly used for monitoring symbolic links.
+- `E`: An empty rule that checks no attributes.
+- `>`: A special rule for checking growing log files.
+
+The exact attribute combinations depend on the configuration.
+
+Example:
+
+```text
+/etc/passwd R
+/etc/shadow R
+/etc/ssh R
+/etc/sudoers R
+```
+
+These rules instruct AIDE to monitor the specified paths using the `R` attribute group.
+
+> AIDE configuration supports directory and file-specific rules, exclusions and other expressions. Review the existing distribution configuration before adding custom rules.
+
+---
+
+## Creating the Initial AIDE Baseline
+
+The initial baseline is one of the most important parts of FIM. It represents the trusted state of the system against which future changes are compared.
+
+For example, assume you have a newly configured Ubuntu server. You have already installed the operating system, updated system packages, configured SSH, installed NGINX, applied file permission restrictions and configured firewall rules. At this point, you can create an initial AIDE baseline.
+
+### Ubuntu / Debian
+
+Initialize the database:
+
+```bash
+sudo aideinit
+```
+
+Depending on the distribution, this generates a new database file, commonly `/var/lib/aide/aide.db.new`. Activate it as the trusted baseline:
+
+```bash
+sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+```
+
+> Some distributions use compressed database filenames or provide helper commands for activating the database. Always verify the actual output and paths.
+
+### RHEL family
+
+Initialize AIDE:
+
+```bash
 sudo aide --init
+```
+
+A new database is commonly generated as `/var/lib/aide/aide.db.new.gz`. Activate it:
+
+```bash
 sudo mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+```
+
+> Check the actual database paths in the configuration before executing these commands.
+
+> **Important:** Create the initial baseline only after verifying that the system is in a trusted state. Otherwise, existing malicious modifications may become part of your trusted baseline.
+
+---
+
+## Performing an AIDE Integrity Check
+
+After creating the baseline, you can periodically check whether monitored files have changed (same command on Ubuntu / Debian and RHEL):
+
+```bash
 sudo aide --check
 ```
 
-### Understanding the Result
+AIDE compares the current filesystem state with the stored database. If no changes are detected, it reports that the database and filesystem match for the monitored attributes. If changes are detected, AIDE generates a report describing the differences.
+
+You can also specify the configuration file explicitly:
+
+```bash
+sudo aide --check --config /etc/aide/aide.conf
+```
+
+---
+
+## Understanding AIDE Results
+
+Consider the following example:
 
 ```text
 AIDE found differences between database and filesystem!!
 
 Summary:
-  Total number of entries:      xxxxx
+  Total number of entries:      12500
   Added entries:                1
   Removed entries:              0
   Changed entries:              1
 ```
 
-AIDE then lists exactly which files changed and **which attributes** (size, owner, permissions, hash) are different.
+| Result | Meaning |
+|--------|---------|
+| Total entries | Number of filesystem objects represented in the comparison. |
+| Added entries | New monitored files or directories were detected. |
+| Removed entries | Previously monitored files or directories are missing. |
+| Changed entries | Existing monitored files or their attributes have changed. |
 
-### Test It Yourself
+AIDE may also display which attributes changed:
 
-```bash
-# Create a new file in a monitored directory
-sudo touch /etc/aide-test-file
+```text
+File: /etc/ssh/sshd_config
 
-# Run a check. It should report 1 added entry.
-sudo aide --check --config /etc/aide/aide.conf
-
-# Accept the change as legitimate and update the baseline
-sudo aide --update --config /etc/aide/aide.conf
-sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
-
-# Cleanup
-sudo rm /etc/aide-test-file
+Permissions: Changed
+Size: Changed
+SHA256: Changed
 ```
 
-### Using FIM Well
+This indicates that the monitored SSH configuration file differs from its baseline. An administrator should investigate:
 
-- Create the baseline **before** the system is exposed to risk.
-- Update the baseline **only after** reviewing legitimate changes (for example, after patching).
-- Store a copy of the database somewhere an attacker cannot edit it (read-only or off the server).
-- Run checks automatically (cron or a systemd timer) and send the results to your monitoring system.
-- Expect noise at first. Tune which paths are monitored.
+- Who modified the file?
+- Was it an authorized configuration change?
+- Did a package update modify it?
+- Was the modification associated with suspicious activity?
 
-> [!TIP]
-> On Debian-based systems, `debsums -c` compares installed package files against their original package checksums. On RHEL, use `rpm -Va`. These are quick extra checks for modified system binaries.
+> AIDE detects differences, but it does not determine whether a change was malicious or legitimate.
 
 ---
+
+## Practical Exercise: Detecting Unauthorized File Changes
+
+**Scenario:** You are managing an Ubuntu Linux server and want to monitor changes to a sensitive configuration file. For this exercise, use a dedicated test file rather than modifying important production configurations.
+
+### Step 1: Create a test directory
+
+```bash
+sudo mkdir -p /opt/fim-lab
+echo "Original configuration" | sudo tee /opt/fim-lab/config.txt
+```
+
+### Step 2: Configure AIDE to monitor the test directory
+
+```bash
+sudo nano /etc/aide/aide.conf
+```
+
+Add:
+
+```text
+/opt/fim-lab R
+```
+
+This tells AIDE to monitor the directory and its contents using the `R` attribute group.
+
+### Step 3: Initialize the baseline
+
+On Ubuntu / Debian:
+
+```bash
+sudo aideinit
+```
+
+Activate the newly generated database using the actual database path configured on your system. For example:
+
+```bash
+sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+```
+
+### Step 4: Perform an initial integrity check
+
+```bash
+sudo aide --check
+```
+
+The test directory should match its baseline.
+
+### Step 5: Modify the file
+
+```bash
+echo "Modified configuration" | sudo tee /opt/fim-lab/config.txt
+```
+
+### Step 6: Run AIDE again
+
+```bash
+sudo aide --check
+```
+
+AIDE should identify the modification. Depending on the configured attributes, it may report changes to file size, modification time and checksum.
+
+### Step 7: Create a new file
+
+```bash
+sudo touch /opt/fim-lab/newfile.txt
+sudo aide --check
+```
+
+AIDE should report the newly created file as an addition.
+
+### Step 8: Delete the new file
+
+```bash
+sudo rm /opt/fim-lab/newfile.txt
+sudo aide --check
+```
+
+AIDE should report the file removal relative to the original baseline.
+
+### Step 9: Cleanup
+
+After completing the exercise, remove the test directory and its configuration rule.
+
+> Do not blindly accept every detected change as legitimate.
+
+---
+
+## Updating the AIDE Baseline
+
+Sometimes files change for legitimate reasons, for example:
+
+- Linux security updates modify system binaries.
+- Administrators modify SSH configurations.
+- NGINX configuration is updated.
+- Application deployments replace application files.
+- Package installations create new files.
+
+When legitimate changes occur, you may need to update the AIDE baseline. The process involves reviewing the changes and accepting only those that are expected.
+
+```bash
+sudo aide --update
+```
+
+This creates a new database based on the current filesystem state, commonly named `/var/lib/aide/aide.db.new`. Activate the new baseline:
+
+```bash
+sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+```
+
+> Verify the database paths and compression settings on your distribution.
+
+> **Important:** Never update the baseline immediately after detecting an unexpected modification without investigating it. If an attacker modifies a system binary and you accept the modification into the new database, the malicious version may become part of your trusted baseline.
+
+---
+
+## Automating AIDE Checks
+
+Manually executing AIDE checks is not practical when managing multiple production servers. You can automate integrity checks using cron or systemd timers.
+
+For example, create a daily cron job:
+
+```bash
+sudo crontab -e
+```
+
+Add:
+
+```text
+0 2 * * * /usr/bin/aide --check
+```
+
+This schedules an AIDE integrity check every day at 2:00 AM. Verify the actual AIDE binary location with:
+
+```bash
+command -v aide
+```
+
+AIDE's output should be captured and forwarded to a monitoring or alerting system. Some Linux distributions also provide AIDE-related systemd services or timers, so check the available units before creating your own schedule.
+
+> For production environments, ensure that the check results are not silently discarded.
+
+---
+
+## Protecting the AIDE Database
+
+One of the most important security considerations is protecting the integrity of the AIDE database itself.
+
+Imagine an attacker gains root privileges on a Linux server. The attacker modifies a sensitive system file and then modifies the AIDE database to match the malicious file. During the next integrity check, AIDE may not detect the modification because the trusted baseline has also been changed.
+
+Therefore, storing the only copy of the AIDE database on the same server creates a security weakness.
+
+Recommended practices:
+
+- Store a trusted copy of the database on a separate secure system.
+- Use read-only storage where practical.
+- Restrict access to the AIDE configuration and database.
+- Protect the baseline using appropriate access controls and integrity mechanisms.
+- Forward audit and integrity reports to a centralized monitoring platform.
+- Update the baseline only after reviewing legitimate changes.
+- Maintain backup copies of trusted baselines.
+
+AIDE can also be configured to use database locations that are not writable by ordinary users. For stronger protection, consider storing baseline copies on a separate administrative system.
+
+---
+
+## AIDE vs auditd
+
+AIDE and auditd are both useful Linux security tools, but they serve different purposes.
+
+| Feature | AIDE | auditd |
+|---------|------|--------|
+| Primary purpose | File integrity monitoring | Security event auditing |
+| Detects file modifications | Yes, during scans | Records matching modification events |
+| Detects file additions | Yes | Can record matching creation events |
+| Detects file deletions | Yes | Can record matching deletion events |
+| Records who modified a file | Not reliably by itself | Can record user and process information when suitable rules are configured |
+| Monitors file permissions | Yes, if configured | Can record permission-changing operations |
+| Operation | Usually periodic scanning | Event-driven auditing |
+| Main use case | Detecting unexpected filesystem changes | Investigating who performed monitored activities |
+
+### Example
+
+Imagine someone modifies `/etc/ssh/sshd_config`.
+
+- **AIDE** can identify that the file differs from its trusted baseline.
+- **auditd** can record the modification event if an appropriate rule is configured.
+
+Together, these tools provide better visibility. AIDE identifies the difference, while auditd can help investigate the activity that caused it.
+
+---
+
+## Additional Integrity Verification Tools
+
+Apart from AIDE, Linux provides other tools that can help verify file integrity.
+
+### SHA-256
+
+Calculate a file checksum manually:
+
+```bash
+sha256sum /etc/passwd
+```
+
+Compare the current checksum with a previously stored trusted checksum. This is useful for understanding the basic concept behind hash-based FIM.
+
+> A manually maintained checksum file stored on the same compromised system is not a strong security boundary.
+
+### debsums
+
+On Debian-based distributions, `debsums` checks installed package files against checksum information supplied by the package database.
+
+```bash
+sudo apt install debsums -y
+sudo debsums -c
+```
+
+This reports files whose checksums differ from the package-provided checksums or cannot be verified.
+
+> Not every package file necessarily has checksum information available.
+
+### rpm verification
+
+On RHEL-based distributions, RPM provides a package verification mechanism:
+
+```bash
+sudo rpm -Va
+```
+
+This verifies installed package files against metadata stored in the RPM database. The output can identify differences involving file size, permissions, ownership, checksums, modification time and other package attributes.
+
+> RPM verification output is not automatically evidence of compromise. Configuration changes, package updates and legitimate modifications can also produce differences.
+
+---
+
+## File Integrity Monitoring in DevSecOps
+
+FIM is useful in DevSecOps because infrastructure and application security do not stop after deployment. Even after deploying a secured application, system files and application configurations may change unexpectedly.
+
+Consider a production Kubernetes worker node or an EC2 instance running NGINX. You can use FIM to monitor:
+
+- SSH configuration files.
+- System binaries.
+- Sudoers policies.
+- User account databases.
+- NGINX configuration.
+- Application configuration.
+- Important deployment files.
+
+A practical security monitoring workflow:
+
+```text
+  Deploy server (Terraform / IaC)
+               |
+               v
+  Apply security configuration (Ansible)
+               |
+               v
+  Install and configure AIDE
+               |
+               v
+  Generate trusted baseline after validation
+               |
+               v
+  Schedule regular integrity checks
+               |
+               v
+  Forward reports to centralized logging
+               |
+               v
+  Investigate unexpected changes
+               |
+               v
+  Update baseline after approved changes
+```
+
+This helps maintain security visibility throughout the infrastructure lifecycle.
+
+---
+
+## Best Practices for File Integrity Monitoring
+
+- Create the initial baseline when the system is known to be clean.
+- Monitor critical operating system and application files.
+- Avoid monitoring every temporary or frequently changing file without a reason.
+- Use strong cryptographic hash algorithms such as SHA-256 or SHA-512.
+- Protect the AIDE database from unauthorized modifications.
+- Store a trusted baseline copy outside the monitored server.
+- Schedule integrity checks regularly.
+- Investigate all unexpected changes.
+- Update the baseline only after validating legitimate modifications.
+- Forward FIM reports to centralized logging and monitoring platforms.
+- Integrate integrity verification into server hardening and deployment workflows.
+- Review monitoring coverage periodically as the server configuration changes.
+
+---
+
+## Conclusion
+
+File Integrity Monitoring is an important component of Linux security because it helps identify unauthorized modifications to critical system and application files.
+
+AIDE provides a practical way to establish trusted file baselines and detect changes through periodic integrity checks. When combined with auditd, FIM becomes more useful for security investigations:
+
+- AIDE identifies what changed.
+- auditd can help identify who performed a monitored operation and when it happened.
+- Centralized logging helps preserve and correlate the evidence.
+
+> **Remember:** File Integrity Monitoring detects unexpected changes; it does not prevent them. The goal is to identify suspicious modifications as early as possible and investigate them before they affect the system.
+
+---
+
+<!-- Reference-style badge definitions -->
+[badge-linux]: https://img.shields.io/badge/Linux-Security-FCC624?logo=linux&logoColor=black
+[badge-aide]: https://img.shields.io/badge/Tool-AIDE-blue
+[badge-ubuntu]: https://img.shields.io/badge/Ubuntu-Debian-E95420?logo=ubuntu&logoColor=white
+[badge-rhel]: https://img.shields.io/badge/RHEL-Family-EE0000?logo=redhat&logoColor=white
+[badge-devsecops]: https://img.shields.io/badge/Focus-DevSecOps-purple
 
 ## 12. Security Updates and Patch Management
 
@@ -2163,72 +3810,498 @@ The configuration is in `/etc/apt/apt.conf.d/50unattended-upgrades`.
 
 ---
 
-## 13. Linux Security Auditing with Lynis
+# Linux Security Auditing with Lynis
 
-### What Is Lynis?
+![Linux][badge-linux] ![Ubuntu][badge-ubuntu] ![Lynis][badge-lynis] ![DevSecOps][badge-devsecops] ![License][badge-license]
 
-**Lynis** is a free, open-source security auditing tool. It scans your Linux system against hundreds of security checks (users, SSH, firewall, kernel settings, software, logging, and more) and gives you:
+> Security auditing and system hardening for Linux servers: what Lynis is, how it works, how to read its output, and a practical audit-and-remediate workflow.
 
-- **Warnings:** problems that need attention.
-- **Suggestions:** improvements you could make.
-- A **hardening index**: a score from 0 to 100.
+---
 
-### Install
+## Table of Contents
+
+- [What Is Lynis?](#what-is-lynis)
+- [How Does Lynis Work?](#how-does-lynis-work)
+- [Installing Lynis](#installing-lynis)
+- [Performing a Linux Security Audit](#performing-a-linux-security-audit)
+- [Understanding Lynis Warnings and Suggestions](#understanding-lynis-warnings-and-suggestions)
+- [Understanding the Lynis Hardening Index](#understanding-the-lynis-hardening-index)
+- [Understanding Lynis Log and Report Files](#understanding-lynis-log-and-report-files)
+- [Investigating Individual Security Findings](#investigating-individual-security-findings)
+- [Running a Quick Audit](#running-a-quick-audit)
+- [Practical Example: Improving Linux Server Security Using Lynis](#practical-example-improving-linux-server-security-using-lynis)
+- [Practical Workflow for Linux Security Auditing](#practical-workflow-for-linux-security-auditing)
+- [Lynis Best Practices](#lynis-best-practices)
+- [Lynis vs auditd](#lynis-vs-auditd)
+- [Conclusion](#conclusion)
+
+---
+
+## What Is Lynis?
+
+**Lynis** is a free, open-source security auditing and system hardening tool for Linux and Unix-based operating systems. It is used by Linux administrators, DevSecOps engineers and security professionals to evaluate the security posture of a server.
+
+Lynis performs hundreds of automated security checks to identify misconfigurations, weak security controls, unnecessary services and potential security vulnerabilities.
+
+It examines different components of a Linux system, including:
+
+| Area | What Lynis checks |
+|------|-------------------|
+| **User and Authentication Security** | User accounts, password policies, authentication mechanisms and account configurations |
+| **SSH Security** | Insecure SSH configurations, such as root login permissions and weak authentication settings |
+| **File Permissions** | Permissions and ownership of sensitive system files and directories |
+| **Firewall Configuration** | Whether a firewall is installed, enabled and configured |
+| **Kernel Security** | Kernel parameters and security-related configurations |
+| **Running Services** | Unnecessary services and potentially insecure processes |
+| **Logging and Auditing** | System logging configurations and auditing mechanisms |
+| **Software Security** | Installed packages, outdated software and security-related configurations |
+| **Network Security** | Network-related configurations and security controls |
+| **System Hardening** | Missing security mechanisms, with recommendations to improve the overall security posture |
+
+---
+
+## How Does Lynis Work?
+
+Lynis performs a series of security tests against the operating system and its installed components.
+
+```text
+  +------------------------------------------------------+
+  | 1. Collect info: distro, kernel, packages, services  |
+  +--------------------------+---------------------------+
+                             |
+                             v
+  +------------------------------------------------------+
+  | 2. Execute security tests against system components  |
+  +--------------------------+---------------------------+
+                             |
+                             v
+  +------------------------------------------------------+
+  | 3. Evaluate configurations against security checks   |
+  +--------------------------+---------------------------+
+                             |
+                             v
+  +------------------------------------------------------+
+  | 4. Identify weaknesses and missing controls          |
+  +--------------------------+---------------------------+
+                             |
+                             v
+  +------------------------------------------------------+
+  | 5. Generate warnings and suggestions                 |
+  +--------------------------+---------------------------+
+                             |
+                             v
+  +------------------------------------------------------+
+  | 6. Calculate the hardening index                     |
+  +------------------------------------------------------+
+```
+
+### Example
+
+Consider an Ubuntu server running an NGINX website. During the audit, Lynis may identify:
+
+- SSH root login is permitted.
+- Firewall is not enabled.
+- Some unnecessary services are running.
+- Sensitive files have inappropriate permissions.
+- Audit logging is not configured.
+- Additional kernel hardening parameters could be enabled.
+
+Lynis reports these findings so that the administrator can investigate and remediate them.
+
+---
+
+## Installing Lynis
+
+There are multiple ways to install Lynis on a Linux system.
+
+### Method 1: Install using APT
+
+For Ubuntu and Debian-based distributions:
 
 ```bash
-# Quick install from the distribution (may be an older version)
-sudo apt install lynis
+sudo apt update
+sudo apt install lynis -y
+```
 
-# Or get the latest version from the official repository
+Verify the installation:
+
+```bash
+lynis show version
+```
+
+> **Note:** Distribution repositories may provide an older Lynis release.
+
+### Method 2: Install from the official GitHub repository
+
+You can also obtain Lynis directly from its [official source repository][lynis-repo].
+
+Install Git:
+
+```bash
+sudo apt install git -y
+```
+
+Clone the repository:
+
+```bash
 git clone https://github.com/CISOfy/lynis.git
+```
+
+Navigate to the directory:
+
+```bash
 cd lynis
 ```
 
-### Run an Audit
+Verify the version:
 
 ```bash
-sudo lynis audit system            # if installed with apt
-sudo ./lynis audit system          # if running from the cloned folder
+sudo ./lynis show version
 ```
 
-The scan takes a minute or two and prints results by category, with each test marked, for example, `[ OK ]`, `[ WARNING ]`, or `[ SUGGESTION ]`.
+This method allows you to run Lynis directly from the cloned source directory without using the package manager.
 
-### Read the Results
+> For production systems, use a controlled update process and verify the source before executing security tools with elevated privileges.
 
-Lynis stores its findings in two files:
+---
 
-| File | Contents |
-| :--- | :--- |
-| `/var/log/lynis.log` | Detailed log of every test |
-| `/var/log/lynis-report.dat` | Machine-readable results |
+## Performing a Linux Security Audit
+
+Once Lynis is installed, you can perform a complete security audit.
+
+If installed through APT:
 
 ```bash
-# Your hardening index
+sudo lynis audit system
+```
+
+If running from the cloned repository:
+
+```bash
+sudo ./lynis audit system
+```
+
+The `audit system` command initiates a comprehensive security assessment of the Linux server. Lynis executes multiple tests and displays the results directly in the terminal.
+
+You may encounter the following result indicators:
+
+| Indicator | Meaning |
+|-----------|---------|
+| `[ OK ]` | The security test passed. |
+| `[ WARNING ]` | A potential security issue requires investigation. |
+| `[ SUGGESTION ]` | An additional security improvement is recommended. |
+| `[ FOUND ]` | A particular component or configuration was detected. |
+| `[ NOT FOUND ]` | The tested component or configuration was not detected. |
+
+> The exact output depends on the Lynis version and the tests executed.
+
+---
+
+## Understanding Lynis Warnings and Suggestions
+
+Lynis generates two important categories of findings.
+
+### Warnings
+
+Warnings indicate configurations or conditions that may introduce security risks.
+
+Examples:
+
+- SSH permits direct root login.
+- Firewall protection is missing or inactive.
+- Sensitive configuration files have weak permissions.
+- Unnecessary services are enabled.
+
+Warnings should be investigated and prioritised based on their actual security impact.
+
+### Suggestions
+
+Suggestions are recommendations that can improve the security posture of the system.
+
+Examples:
+
+- Enable additional kernel hardening parameters.
+- Configure a stronger password policy.
+- Improve system logging.
+- Enable additional security mechanisms.
+- Remove unnecessary software packages.
+
+Not every suggestion is mandatory. Evaluate each recommendation based on your server's role and operational requirements.
+
+---
+
+## Understanding the Lynis Hardening Index
+
+One of the important outputs generated by Lynis is the **Hardening Index**. It is a numerical indicator intended to help administrators evaluate and compare the system's security hardening status, commonly presented on a scale of 0–100.
+
+```text
+Hardening index : 72 [##########]
+```
+
+The index can help administrators understand whether their hardening efforts are improving the system's security posture. However, it is important to understand that:
+
+- A higher score does not guarantee that the server is secure.
+- A lower score does not necessarily mean the server is vulnerable.
+- The score depends on the tests executed and the system configuration.
+- Different server roles may produce different results.
+- Some recommendations may not apply to a particular environment.
+
+> **Important:** Do not blindly chase a perfect score. The actual objective is to identify and reduce security risks, not simply increase a numerical value.
+
+---
+
+## Understanding Lynis Log and Report Files
+
+After performing an audit, Lynis stores information about the tests and their results. The default locations are:
+
+| File | Purpose |
+|------|---------|
+| `/var/log/lynis.log` | Detailed information about the security tests performed during the audit |
+| `/var/log/lynis-report.dat` | Structured audit findings, warnings, suggestions and report information |
+
+### View the detailed audit log
+
+```bash
+sudo less /var/log/lynis.log
+```
+
+This file helps you investigate what Lynis checked and what results were generated.
+
+### View the structured report
+
+```bash
+sudo less /var/log/lynis-report.dat
+```
+
+This report contains information that can be filtered using commands such as `grep`.
+
+### Extract the Hardening Index
+
+```bash
 sudo grep hardening_index /var/log/lynis-report.dat
+```
 
-# All warnings
+### Display all warnings
+
+```bash
 sudo grep '^warning\[\]' /var/log/lynis-report.dat
+```
 
-# All suggestions
+### Display all suggestions
+
+```bash
 sudo grep '^suggestion\[\]' /var/log/lynis-report.dat
+```
 
-# Explain one finding in detail (use an ID such as SSH-7440 from the report)
+These commands help administrators quickly identify the findings without manually reading the entire report.
+
+---
+
+## Investigating Individual Security Findings
+
+Sometimes Lynis generates a warning or suggestion with a test identifier, for example:
+
+```text
+SSH-7440
+```
+
+This identifier helps you identify the security test associated with the finding. You can investigate the test using:
+
+```bash
 sudo lynis show details SSH-7440
 ```
 
-### A Practical Workflow
+This displays additional information about the test and helps you understand what it checks. Investigate the finding before making configuration changes.
 
-```text
-1. Run Lynis        ->  record your starting hardening index (baseline)
-2. Read warnings    ->  fix the most serious ones first
-3. Read suggestions ->  apply the ones that make sense for your system
-4. Run Lynis again  ->  confirm the score and findings improved
-5. Repeat regularly ->  and after major changes
+A good security remediation process involves:
+
+1. Identify the finding.
+2. Understand the security risk.
+3. Locate the affected configuration.
+4. Apply an appropriate security fix.
+5. Validate that the fix does not break existing services.
+6. Run Lynis again to verify the result.
+
+---
+
+## Running a Quick Audit
+
+If you want to perform a quicker assessment, Lynis provides the `--quick` option.
+
+```bash
+sudo lynis audit system --quick
 ```
 
-> [!IMPORTANT]
-> **Do not chase a perfect score.** The hardening index is a guide, not a pass or fail grade. Some suggestions may not suit your environment, and applying advice without understanding it can break services. Read each finding, understand the risk, and decide.
+This option reduces interactive pauses during the audit. It is useful when performing repeated assessments or incorporating Lynis into administrative workflows.
 
+---
+
+## Practical Example: Improving Linux Server Security Using Lynis
+
+**Scenario:** You have an Ubuntu EC2 instance hosting a website using NGINX. You want to evaluate its security posture and identify possible weaknesses.
+
+### Step 1: Install Lynis
+
+```bash
+sudo apt update
+sudo apt install lynis -y
+```
+
+### Step 2: Perform the initial audit
+
+```bash
+sudo lynis audit system
+```
+
+Record the initial hardening index and identify all warnings and suggestions.
+
+### Step 3: Investigate the findings
+
+Check the warnings:
+
+```bash
+sudo grep '^warning\[\]' /var/log/lynis-report.dat
+```
+
+Check the suggestions:
+
+```bash
+sudo grep '^suggestion\[\]' /var/log/lynis-report.dat
+```
+
+### Step 4: Apply security improvements
+
+Depending on the findings, you may perform the following:
+
+- Disable direct SSH root login.
+- Disable SSH password authentication after verifying key-based access.
+- Configure UFW with a default-deny inbound policy.
+- Remove unnecessary services.
+- Correct permissions on sensitive files.
+- Enable auditd for security event monitoring.
+- Apply appropriate kernel security parameters.
+- Update outdated packages.
+
+### Step 5: Run the audit again
+
+```bash
+sudo lynis audit system
+```
+
+Compare the new findings with the initial audit. Check whether the warnings have been resolved and whether the hardening index has improved.
+
+### Step 6: Document the results
+
+Maintain a record of the initial and final audit results.
+
+| Security Check | Initial Status | Final Status |
+|----------------|----------------|--------------|
+| SSH root login | Enabled | Disabled |
+| UFW firewall | Inactive | Active |
+| Auditd | Not configured | Configured |
+| Sensitive file permissions | Needs investigation | Verified |
+| System packages | Updates available | Updated |
+
+> The actual results will depend on your system and the changes you implement.
+
+---
+
+## Practical Workflow for Linux Security Auditing
+
+A recommended workflow for using Lynis in Linux security auditing:
+
+```text
+        Start Linux Security Audit
+                   |
+                   v
+           Install Lynis
+                   |
+                   v
+          Perform Initial Audit
+                   |
+                   v
+        Record Hardening Index
+                   |
+                   v
+        Investigate Warnings
+                   |
+                   v
+       Review Security Suggestions
+                   |
+                   v
+         Apply Security Fixes
+                   |
+                   v
+        Perform Audit Again
+                   |
+                   v
+       Compare Audit Results
+                   |
+                   v
+        Document Improvements
+```
+
+---
+
+## Lynis Best Practices
+
+- Run Lynis periodically to evaluate the security posture of Linux servers.
+- Perform an audit after major system configuration changes.
+- Use elevated privileges when performing a complete system audit so that Lynis can access the necessary system information.
+- Investigate warnings before implementing changes.
+- Do not blindly apply every suggestion.
+- Maintain audit reports to compare security improvements over time.
+- Use Lynis alongside other security tools such as auditd, UFW and file integrity monitoring solutions.
+- Include Lynis audits in regular server security assessment procedures.
+
+---
+
+## Lynis vs auditd
+
+Lynis and auditd are both useful Linux security tools, but they serve different purposes.
+
+| Feature | Lynis | auditd |
+|---------|-------|--------|
+| Primary purpose | Security auditing and hardening assessment | Security event auditing |
+| Operation | Runs security tests when invoked | Runs continuously as an auditing service |
+| Identifies misconfigurations | Yes | Not its primary purpose |
+| Provides hardening recommendations | Yes | No |
+| Monitors file changes | Checks file security configurations | Records configured file changes |
+| Records security events | Maintains audit logs and reports | Records matching security events |
+| Typical usage | Periodic security assessments | Continuous security monitoring |
+
+### Example
+
+Imagine someone modifies the SSH configuration file:
+
+```bash
+sudo nano /etc/ssh/sshd_config
+```
+
+- **Lynis:** Can identify potentially insecure SSH configuration settings during its next security audit.
+- **auditd:** Can record the modification event if an appropriate audit rule is configured.
+
+Therefore, both tools complement each other.
+
+---
+
+## Conclusion
+
+Lynis is an important tool for Linux security auditing and system hardening. It helps administrators identify security weaknesses, understand missing security controls and improve the overall security posture of Linux servers.
+
+In a DevSecOps environment, Lynis can be incorporated into regular server security assessments to validate hardening configurations and identify areas requiring improvement.
+
+> **Remember:** Lynis identifies security weaknesses and recommends improvements; the administrator is responsible for evaluating and implementing the appropriate fixes.
+
+---
+
+<!-- Reference-style link definitions -->
+[lynis-repo]: https://github.com/CISOfy/lynis
+[badge-linux]: https://img.shields.io/badge/Linux-Security-FCC624?logo=linux&logoColor=black
+[badge-ubuntu]: https://img.shields.io/badge/Ubuntu-Debian--based-E95420?logo=ubuntu&logoColor=white
+[badge-lynis]: https://img.shields.io/badge/Tool-Lynis-blue
+[badge-devsecops]: https://img.shields.io/badge/Focus-DevSecOps-purple
+[badge-license]: https://img.shields.io/badge/Lynis-Open--Source-brightgreen
 ---
 
 ## 14. Practical Labs
