@@ -42,7 +42,7 @@ By completing this module, you will be able to:
 - [08. Process and Service Security](#08-process-and-service-security)
 - [09. Host Firewall Security](#09-host-firewall-security)
 - [10. Linux Logging and Auditing](#10-Linux-Logging-and-Auditing)
-- [11. File Integrity Monitoring](./file-integrity-monitoring/README.md)
+- [11. File Integrity Monitoring](#11-File-Integrity-Monitoring-(FIM))
 - [12. Security Updates and Patch Management](#12-security-updates-and-patch-management)
 - [13. Linux Security Auditing with Lynis](./lynis/README.md)
 - [14. Practical Labs](#14-practical-labs)
@@ -2960,7 +2960,7 @@ By combining these tools with proper log retention, access restrictions, central
 [badge-auditd]: https://img.shields.io/badge/Audit-auditd-red
 [badge-devsecops]: https://img.shields.io/badge/Focus-DevSecOps-purple
 ---
-# File Integrity Monitoring (FIM)
+# 11. File Integrity Monitoring (FIM)
 
 ![Linux][badge-linux] ![AIDE][badge-aide] ![Ubuntu][badge-ubuntu] ![RHEL][badge-rhel] ![DevSecOps][badge-devsecops]
 
