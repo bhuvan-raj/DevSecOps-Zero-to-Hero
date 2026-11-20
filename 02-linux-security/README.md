@@ -41,14 +41,13 @@ By completing this module, you will be able to:
 - [07. Linux Capabilities](#07-linux-capabilities)
 - [08. Process and Service Security](#08-process-and-service-security)
 - [09. Host Firewall Security](#09-host-firewall-security)
-- [10. Linux Logging and Auditing](#10-linux-logging-and-auditing)
-- [11. File Integrity Monitoring](#11-file-integrity-monitoring)
+- [10. Linux Logging and Auditing](./logging-auditing/README.md)
+- [11. File Integrity Monitoring](./file-integrity-monitoring/README.md)
 - [12. Security Updates and Patch Management](#12-security-updates-and-patch-management)
-- [13. Linux Security Auditing with Lynis](#13-linux-security-auditing-with-lynis)
+- [13. Linux Security Auditing with Lynis](./lynis/README.md)
 - [14. Practical Labs](#14-practical-labs)
 - [15. Knowledge Check](#15-knowledge-check)
 - [16. Summary](#16-summary)
-
 ---
 
 ## 01. Linux Security Fundamentals
