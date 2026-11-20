@@ -41,7 +41,7 @@ By completing this module, you will be able to:
 - [07. Linux Capabilities](#07-linux-capabilities)
 - [08. Process and Service Security](#08-process-and-service-security)
 - [09. Host Firewall Security](#09-host-firewall-security)
-- [10. Linux Logging and Auditing](./logging-auditing/README.md)
+- [10. Linux Logging and Auditing](#10-Linux-Logging-and-Auditing)
 - [11. File Integrity Monitoring](./file-integrity-monitoring/README.md)
 - [12. Security Updates and Patch Management](#12-security-updates-and-patch-management)
 - [13. Linux Security Auditing with Lynis](./lynis/README.md)
@@ -1871,7 +1871,7 @@ Incoming traffic enters the server, whereas outgoing traffic leaves the server.
 
 ---
 
-# Linux Logging and Auditing
+# 10. Linux Logging and Auditing
 
 ![Linux][badge-linux] ![Ubuntu][badge-ubuntu] ![journald][badge-journald] ![auditd][badge-auditd] ![DevSecOps][badge-devsecops]
 
